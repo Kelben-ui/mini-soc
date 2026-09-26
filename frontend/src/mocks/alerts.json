@@ -1,0 +1,3 @@
+[
+  { "alert_id": "ALT-000123", "title": "SSH brute force", "severity": "HIGH", "status": "OPEN" }
+]
