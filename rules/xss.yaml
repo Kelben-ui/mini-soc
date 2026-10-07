@@ -1,0 +1,16 @@
+id: WEB-XSS-001
+name: Cross-site scripting
+severity: MEDIUM
+enabled: true
+
+match:
+  category: web
+  action: http_request
+
+contains:
+  - "<script"
+  - "javascript:"
+  - "onerror="
+  - "onload="
+
+mitre: T1059

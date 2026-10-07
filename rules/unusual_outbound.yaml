@@ -1,0 +1,8 @@
+id: NET-OUTBOUND-001
+name: Unusual outbound connection
+severity: MEDIUM
+enabled: true
+match:
+  category: network
+  action: unusual_outbound
+mitre: T1041

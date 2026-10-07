@@ -1,0 +1,8 @@
+id: NET-PORTSCAN-001
+name: Port scan
+severity: MEDIUM
+enabled: true
+match:
+  category: network
+  action: port_scan
+mitre: T1046

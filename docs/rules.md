@@ -254,3 +254,26 @@ Testing must verify that:
 **Logic:** Detect decoded URI or request body containing SQL injection patterns, including:
 
 
+## Port Scan Detection
+
+The Mini SOC uses the project's custom IDS as the source of normalized
+port-scan events.
+
+The IDS identifies port-scan activity based on multiple destination
+ports observed from the same source within the configured detection
+window.
+
+Once detected, the IDS produces a standardized event:
+
+- category: network
+- action: port_scan
+- src_ip: source IP
+- dst_ip: destination IP
+- details: IDS-specific information
+- raw: original IDS event
+
+The Detection Engine consumes this standardized event and creates the
+NET-PORTSCAN-001 alert.
+
+This keeps the Detection Engine source-independent and allows the IDS
+to perform network-specific detection.

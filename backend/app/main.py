@@ -1,0 +1,55 @@
+from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
+from .dependencies import get_current_user
+from .database import get_db
+from .models.user import User
+from .routers.auth import router as auth_router
+from .routers.ingest import router as ingest_router
+from .routers.events import router as events_router
+from .routers.alerts import router as alerts_router
+from .routers.incidents import router as incidents_router
+from .routers.stats import router as stats_router
+from fastapi.middleware.cors import CORSMiddleware
+app = FastAPI(
+    title="Mini SOC Platform API",
+    description="Backend API for the Mini SOC cybersecurity incident response platform",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins for development (you can restrict this to http://localhost:5173 later)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
+)
+
+app.include_router(auth_router)
+app.include_router(ingest_router)
+app.include_router(events_router)
+app.include_router(alerts_router)
+app.include_router(incidents_router)
+app.include_router(stats_router)
+@app.get("/")
+def root():
+    return {
+        "message": "Mini SOC Platform API is running"
+    }
+
+
+@app.get("/users")
+def get_users(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    users = db.query(User).all()
+
+    return [
+        {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "created_at": user.created_at,
+        }
+        for user in users
+    ]
