@@ -1,0 +1,8 @@
+id: DNS-ANOMALY-001
+name: Unusual DNS activity
+severity: LOW
+enabled: true
+match:
+  category: dns
+  action: unusual_dns
+mitre: T1071.004

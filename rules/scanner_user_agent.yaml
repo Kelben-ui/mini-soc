@@ -1,0 +1,16 @@
+id: WEB-SCAN-001
+name: Scanner user-agent
+severity: MEDIUM
+enabled: true
+
+match:
+  category: web
+  action: http_request
+
+contains:
+  - "sqlmap"
+  - "nikto"
+  - "nmap"
+  - "gobuster"
+
+mitre: T1595

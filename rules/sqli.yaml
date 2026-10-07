@@ -1,0 +1,20 @@
+id: WEB-SQLI-001
+name: SQL injection
+severity: HIGH
+enabled: true
+
+match:
+  category: web
+  action: http_request
+
+contains:
+  - "' or "
+  - "\" or "
+  - "union select"
+  - "select "
+  - " from "
+  - "sleep("
+  - "--"
+  - "/*"
+
+mitre: T1190

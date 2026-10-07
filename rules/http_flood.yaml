@@ -1,0 +1,17 @@
+id: WEB-FLOOD-001
+name: HTTP flood
+severity: MEDIUM
+enabled: true
+
+match:
+  category: web
+  action: http_request
+  details:
+    status_code: 301
+threshold:
+  count: 301
+  window_seconds: 60
+  group_by:
+    - src_ip
+
+mitre: T1498

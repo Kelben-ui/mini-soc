@@ -1,0 +1,8 @@
+id: IDS-SIG-001
+name: IDS signature detection
+severity: HIGH
+enabled: true
+match:
+  category: ids
+  action: alert
+mitre: T1059

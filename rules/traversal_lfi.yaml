@@ -1,0 +1,15 @@
+id: WEB-LFI-001
+name: Directory traversal / LFI
+severity: HIGH
+enabled: true
+
+match:
+  category: web
+  action: http_request
+
+contains:
+  - "../"
+  - "/etc/passwd"
+  - "php://"
+
+mitre: T1083

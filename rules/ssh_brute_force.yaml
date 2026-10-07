@@ -1,0 +1,18 @@
+id: SSH-BF-001
+name: SSH brute force
+severity: HIGH
+enabled: true
+
+match:
+  log_type: auth
+  action: ssh_login
+  outcome: failure
+
+threshold:
+  count: 10
+  window_seconds: 300
+  group_by:
+    - src_ip
+    - dst_ip
+
+mitre: T1110

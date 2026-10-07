@@ -1,0 +1,9 @@
+id: SSH-SUCCESS-001
+name: Login success after brute force
+severity: CRITICAL
+enabled: true
+match:
+  log_type: auth
+  action: ssh_login
+  outcome: success
+mitre: T1078

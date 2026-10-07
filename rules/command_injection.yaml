@@ -1,0 +1,18 @@
+id: WEB-CMD-001
+name: Command injection
+severity: HIGH
+enabled: true
+
+match:
+  category: web
+  action: http_request
+
+contains:
+  - "; whoami"
+  - "; id"
+  - "| whoami"
+  - "| id"
+  - "&& whoami"
+  - "&& id"
+
+mitre: T1059
