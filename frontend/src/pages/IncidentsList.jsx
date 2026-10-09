@@ -30,7 +30,7 @@ export default function IncidentsList() {
   const handleStatusChange = async (incidentId, newStatus) => {
     try {
       setUpdatingId(incidentId);
-      await client.patch(/api/incidents/${incidentId}/status, {
+      await client.patch(`/api/incidents/${incidentId}/status`, {
   status: newStatus,
   comment: "Status updated from incidents list"
 });
