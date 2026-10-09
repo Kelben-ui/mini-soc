@@ -8,6 +8,7 @@ from .routers.ingest import router as ingest_router
 from .routers.events import router as events_router
 from .routers.alerts import router as alerts_router
 from .routers.incidents import router as incidents_router
+from .routers.rules import router as rules_router
 from .routers.stats import router as stats_router
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
@@ -29,6 +30,7 @@ app.include_router(ingest_router)
 app.include_router(events_router)
 app.include_router(alerts_router)
 app.include_router(incidents_router)
+app.include_router(rules_router)
 app.include_router(stats_router)
 @app.get("/")
 def root():

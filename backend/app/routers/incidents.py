@@ -27,6 +27,10 @@ router = APIRouter(
     tags=["Incidents"]
 )
 
+@router.get("/incidents")
+def get_incidents(db: Session = Depends(get_db)):
+    incidents = db.query(Incident).all()
+    return incidents
 
 @router.post("/incidents")
 def create_incident(

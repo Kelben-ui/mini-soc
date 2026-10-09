@@ -1,11 +1,13 @@
-export default function SeverityBanner({ severity, title }) {
-  if (severity !== "HIGH" && severity !== "CRITICAL") return null;
+export default function SeverityBanner({ alerts }) {
+  const critical = alerts.find(
+    (a) => ["HIGH", "CRITICAL"].includes(a.severity) && a.status === "NEW"
+  );
+
+  if (!critical) return null;
+
   return (
-    <div style={{
-      background: severity === "CRITICAL" ? "#7a0000" : "#b30000",
-      color: "white", padding: "10px", fontWeight: "bold", textAlign: "center"
-    }}>
-      {severity} SEVERITY — {title.toUpperCase()}
+    <div className="banner-critical">
+      {critical.severity} SEVERITY — {critical.title?.toUpperCase()}
     </div>
   );
 }
