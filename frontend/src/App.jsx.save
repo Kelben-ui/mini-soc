@@ -1,0 +1,49 @@
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+
+function Shell() {
+  const [alerts, setAlerts] = useState([]);
+
+  useEffect(() => {
+    if (!isLoggedIn()) return;
+    function fetchAlerts() {
+      getAlerts().then((res) => {
+        setAlerts(Array.isArray(res.data) ? res.data : res.data.alerts || []);
+      }).catch(() => {});
+    }
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="app-shell">
+      <NavBar />
+      <div>
+        <SeverityBanner alerts={alerts} />
+        <div className="main"><Outlet /></div>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+
+           <Route path="/" element={<ProtectedRoute><Shell /></ProtectedRoute>}>
+          <Route path="/" element={<Overview />} />
+          <Route path="/alerts" element={<AlertsList />} />
+          <Route path="/alerts/:id" element={<AlertDetail />} />
+          <Route path="/incidents" element={<IncidentsList />} />
+          <Route path="/incidents/:id" element={<IncidentDetail />} />
+          <Route path="/events" element={<EventSearch />} />
+          <Route path="/rules" element={<Rules />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
