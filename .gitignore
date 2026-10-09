@@ -14,3 +14,39 @@ __pycache__/
 
 
 
+venv/
+node_modules/
+frontend/dist/
+.pytest_cache/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# JavaScript dependencies and build output
+node_modules/
+frontend/dist/
+
+# Test caches
+.pytest_cache/
+
+# Backup and temporary files
+*.bak
+*.save
+*.final.bak
+*.before_normalization
+*~

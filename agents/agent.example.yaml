@@ -1,0 +1,14 @@
+# Reference configuration for the Mini SOC log agent.
+# The current agent.py does not load this YAML file yet.
+
+collector_url: "http://127.0.0.1:9000/ingest"
+
+log_files:
+  - path: "/var/log/nginx/access.log"
+    log_type: "nginx_access"
+
+  - path: "/var/log/auth.log"
+    log_type: "auth"
+
+  - path: "/var/log/mini_soc_ids.json"
+    log_type: "mini_soc_ids"

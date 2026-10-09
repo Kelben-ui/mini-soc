@@ -1,0 +1,16 @@
+# Template only. Review before installing.
+# Do not enable while another copy of the agent is running.
+[Unit]
+Description=Mini SOC Log Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ubuntu/mini-soc
+ExecStart=/home/ubuntu/infrastructure/venv/bin/python -u /home/ubuntu/mini-soc/agents/log_agent/agent.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

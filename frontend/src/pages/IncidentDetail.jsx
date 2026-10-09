@@ -29,7 +29,7 @@ export default function IncidentDetail() {
   const handleUpdateStatus = async (e) => {
     e.preventDefault();
     try {
-      await client.patch(/api/incidents/${id}/status, { status, comment: "Status updated from dashboard" });
+      await client.patch(`/api/incidents/${id}/status`, { status, comment: "Status updated from dashboard" });
       alert('Incident status updated successfully!');
     } catch (err) {
       console.error('Failed to update status:', err);
