@@ -1,6 +1,7 @@
+import os 
 from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session
-from .dependencies import get_current_user
+from .dependencies import require_role 
 from .database import get_db
 from .models.user import User
 from .routers.auth import router as auth_router
@@ -17,12 +18,21 @@ app = FastAPI(
     version="1.0.0",
 )
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins for development (you can restrict this to http://localhost:5173 later)
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 app.include_router(auth_router)
@@ -42,7 +52,7 @@ def root():
 @app.get("/users")
 def get_users(
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(require_role("lead", "admin")) 
 ):
     users = db.query(User).all()
 
