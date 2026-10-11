@@ -9,9 +9,16 @@ from collector.parsers.nginx_access_parser import parse as parse_nginx_access
 from collector.parsers.nginx_error_parser import parse as parse_nginx_error
 from collector.parsers.auth_parser import parse as parse_auth
 
+@app.on_event("startup")
+def ensure_dirs():
+    import os
+    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
+    os.makedirs(evidence_dir, exist_ok=True)
+
+
 app = FastAPI()
 
-BACKEND_URL = "http://127.0.0.1:8000/api/ingest"
+BACKEND_URL = f"{os.environ.get('BACKEND_URL', 'http://127.0.0.1:8000')}/api/ingest"
 
 PARSERS = {
     "suricata": parse_suricata,

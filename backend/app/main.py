@@ -42,6 +42,15 @@ app.include_router(alerts_router)
 app.include_router(incidents_router)
 app.include_router(rules_router)
 app.include_router(stats_router)
+
+
+@app.on_event("startup")
+def ensure_dirs():
+    import os
+    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
+    os.makedirs(evidence_dir, exist_ok=True)
+
+
 @app.get("/")
 def root():
     return {
