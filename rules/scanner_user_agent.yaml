@@ -1,6 +1,7 @@
 id: WEB-SCAN-001
 name: Scanner user-agent
 severity: MEDIUM
+category: web
 enabled: true
 
 match:

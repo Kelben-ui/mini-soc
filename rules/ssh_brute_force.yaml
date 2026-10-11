@@ -1,6 +1,7 @@
 id: SSH-BF-001
 name: SSH brute force
 severity: HIGH
+category: authentication
 enabled: true
 
 match:

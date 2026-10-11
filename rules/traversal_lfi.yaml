@@ -1,6 +1,7 @@
 id: WEB-LFI-001
 name: Directory traversal / LFI
 severity: HIGH
+category: web
 enabled: true
 
 match:

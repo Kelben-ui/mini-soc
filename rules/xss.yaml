@@ -1,6 +1,7 @@
 id: WEB-XSS-001
 name: Cross-site scripting
 severity: MEDIUM
+category: web
 enabled: true
 
 match:

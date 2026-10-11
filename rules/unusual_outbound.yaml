@@ -1,6 +1,7 @@
 id: NET-OUTBOUND-001
 name: Unusual outbound connection
 severity: MEDIUM
+category: network
 enabled: true
 match:
   category: network

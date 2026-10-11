@@ -1,6 +1,7 @@
 id: DNS-ANOMALY-001
 name: Unusual DNS activity
 severity: LOW
+category: dns
 enabled: true
 match:
   category: dns
