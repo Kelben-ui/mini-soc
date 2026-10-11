@@ -1,63 +1,36 @@
 # Mini SOC Platform
 
-A security monitoring and incident response platform for collecting logs,
-normalizing events, detecting suspicious activity, and investigating alerts.
+A self-contained Security Operations Center (SOC) platform for detection, alerting, investigation, and response.
 
-## Project structure
+## Quick Start (EC2, systemd)
 
-- `agents/` — log collection agents and service templates.
-- `collector/` — receives and parses log entries.
-- `detection/` — detection engine.
-- `rules/` — detection rules.
-- `backend/` — FastAPI application, database models, and migrations.
-- `frontend/` — React and Vite interface.
-- `infrastructure/` — lab and firewall configuration.
-- `attack-sim/` — authorized lab simulations.
-- `playbooks/` — incident response procedures.
-- `sample-data/` — sample events and test data.
-- `docs/` — project documentation and testing notes.
+1. Clone/copy code to `/opt/mini-soc/` on EC2
+2. Configure `/etc/mini-soc/.env` (from `.env.example`)
+3. Run bootstrap: `bash /opt/mini-soc/deploy/install.sh`
+4. Services: `systemctl status soc-backend soc-collector soc-detection soc-agent mini-soc-ids`
+5. Access via nginx (80/443/8443)
 
-## Event pipeline
+## Update
+`bash /opt/mini-soc/deploy/update.sh` (git pull, deps, migrations, build, restart)
 
-Log files → Log agent → Collector → Backend API → PostgreSQL.
+## Architecture
+See [docs/architecture.md](docs/architecture.md).
 
-The custom Mini SOC IDS writes JSON alerts to
-`/var/log/mini_soc_ids.json`.
+## Deviations from Original Design
 
-## Requirements
+| Original | Current (EC2/systemd) | Reason |
+|---|---|---|
+| Docker-based deployment | Native systemd services (deploy/systemd/ + install.sh/update.sh) | One-VM EC2 deployment; simpler ops, reproducible with systemd hardening |
+| Suricata IDS | Custom lightweight IDS (`ids/`, `mini-soc-ids.service`) | Team's IDS/IPS with configurable thresholds, allow-lists, IPS block helper |
+| Multi-VM distributed setup | Single EC2 instance | Streamlined for lab/demo environment; all services on localhost |
 
-- Python and the required packages for each component.
-- PostgreSQL configured for the backend.
-- Node.js and npm for the frontend.
-- A configured root `.env` file.
+## Key Paths
+- Code: `/opt/mini-soc/`
+- Venv: `/opt/mini-soc/.venv/`
+- Config: `/etc/mini-soc/.env` (0640)
+- Evidence: `/var/lib/mini-soc/evidence/`
+- Logs: journald (systemd units)
+- IDS output: `/var/log/mini_soc_ids.json`
 
-Never commit `.env` or real credentials.
-
-## Start the backend
-
-From the repository root:
-
-    cd backend
-    ../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-
-API root: http://127.0.0.1:8000/
-API documentation: http://127.0.0.1:8000/docs
-
-## Start the frontend
-
-    cd frontend
-    npm run dev
-
-Use the local URL printed by Vite.
-
-## Database migrations
-
-Alembic configuration is `backend/alembic.ini`.
-Migration files are under `backend/migrations/versions/`.
-
-## Security
-
-Restrict access to authorized users and systems. Use strong secrets, keep
-`.env` private, and review development settings before deployment.
-
-See `docs/` for architecture, API contracts, rules, lab setup, and testing.
+## Detection
+Replay test: `cd /opt/mini-soc && PYTHONPATH=/opt/mini-soc .venv/bin/python detection/tests/replay_test.py` (expects "REPLAY TEST PASSED")
