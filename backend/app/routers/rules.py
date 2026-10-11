@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 import os
 import yaml
+
+from ..dependencies import get_current_user
 
 router = APIRouter(
     prefix="/api",
@@ -11,7 +13,9 @@ router = APIRouter(
 RULES_DIR = os.getenv("RULES_DIR", "../../rules") 
 
 @router.get("/rules")
-def get_rules():
+def get_rules(
+    current_user=Depends(get_current_user),
+):
     rules = []
     if not os.path.exists(RULES_DIR):
         return []

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import hashlib
+import html
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -27,8 +28,24 @@ router = APIRouter(
     tags=["Incidents"]
 )
 
+def esc(value):
+    """HTML-escape a value for safe interpolation into the report."""
+    return html.escape(str(value)) if value is not None else ""
+
+
+def esc_list(values):
+    """Render a list field (e.g. affected hosts) as an escaped comma list."""
+    if values is None:
+        return ""
+    if isinstance(values, (list, tuple)):
+        return html.escape(", ".join(str(v) for v in values))
+    return html.escape(str(values))
+
 @router.get("/incidents")
-def get_incidents(db: Session = Depends(get_db)):
+def get_incidents(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     incidents = db.query(Incident).all()
     return incidents
 
@@ -337,38 +354,38 @@ def get_incident_report(
 
     for item in history:
         timeline.append(
-            f"<li><strong>{item.changed_at}</strong> — "
-            f"Status changed from {item.old_status} to {item.new_status}. "
-            f"{item.comment}</li>"
+            f"<li><strong>{esc(item.changed_at)}</strong> — "
+            f"Status changed from {esc(item.old_status)} to {esc(item.new_status)}. "
+            f"{esc(item.comment)}</li>"
         )
 
     for note in notes:
         timeline.append(
-            f"<li><strong>Note</strong> — {note.body}</li>"
+            f"<li><strong>Note</strong> — {esc(note.body)}</li>"
         )
 
     for item in evidence:
         timeline.append(
             f"<li><strong>Evidence uploaded</strong> — "
-            f"{item.filename} "
-            f"(SHA-256: {item.sha256})</li>"
+            f"{esc(item.filename)} "
+            f"(SHA-256: {esc(item.sha256)})</li>"
         )
 
     for action in actions:
         timeline.append(
             f"<li><strong>Action</strong> — "
-            f"{action.action_type} on {action.target}: "
-            f"{action.result}</li>"
+            f"{esc(action.action_type)} on {esc(action.target)}: "
+            f"{esc(action.result)}</li>"
         )
 
     evidence_rows = "".join(
         f"""
         <tr>
-            <td>{item.id}</td>
-            <td>{item.filename}</td>
-            <td>{item.type}</td>
-            <td>{item.size_bytes}</td>
-            <td>{item.sha256}</td>
+            <td>{esc(item.id)}</td>
+            <td>{esc(item.filename)}</td>
+            <td>{esc(item.type)}</td>
+            <td>{esc(item.size_bytes)}</td>
+            <td>{esc(item.sha256)}</td>
         </tr>
         """
         for item in evidence
@@ -377,10 +394,10 @@ def get_incident_report(
     action_rows = "".join(
         f"""
         <tr>
-            <td>{item.action_type}</td>
-            <td>{item.target}</td>
-            <td>{item.reason}</td>
-            <td>{item.result}</td>
+            <td>{esc(item.action_type)}</td>
+            <td>{esc(item.target)}</td>
+            <td>{esc(item.reason)}</td>
+            <td>{esc(item.result)}</td>
         </tr>
         """
         for item in actions
@@ -393,7 +410,7 @@ def get_incident_report(
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Incident Report {incident.incident_code}</title>
+        <title>Incident Report {esc(incident.incident_code)}</title>
         <style>
             body {{
                 font-family: Arial, sans-serif;
@@ -430,17 +447,17 @@ def get_incident_report(
         <h2>Incident Summary</h2>
 
         <table>
-            <tr><th>Incident ID</th><td>{incident.incident_code}</td></tr>
-            <tr><th>Title</th><td>{incident.title}</td></tr>
-            <tr><th>Description</th><td>{incident.description or ""}</td></tr>
-            <tr><th>Severity</th><td>{incident.severity}</td></tr>
-            <tr><th>Status</th><td>{incident.status}</td></tr>
-            <tr><th>Category</th><td>{incident.category or ""}</td></tr>
-            <tr><th>Assigned Analyst</th><td>{incident.assigned_to or ""}</td></tr>
-            <tr><th>Created At</th><td>{incident.created_at}</td></tr>
-            <tr><th>Closed At</th><td>{incident.closed_at or ""}</td></tr>
-            <tr><th>Affected Hosts</th><td>{incident.affected_hosts or []}</td></tr>
-            <tr><th>Source IPs</th><td>{incident.source_ips or []}</td></tr>
+            <tr><th>Incident ID</th><td>{esc(incident.incident_code)}</td></tr>
+            <tr><th>Title</th><td>{esc(incident.title)}</td></tr>
+            <tr><th>Description</th><td>{esc(incident.description)}</td></tr>
+            <tr><th>Severity</th><td>{esc(incident.severity)}</td></tr>
+            <tr><th>Status</th><td>{esc(incident.status)}</td></tr>
+            <tr><th>Category</th><td>{esc(incident.category)}</td></tr>
+            <tr><th>Assigned Analyst</th><td>{esc(incident.assigned_to)}</td></tr>
+            <tr><th>Created At</th><td>{esc(incident.created_at)}</td></tr>
+            <tr><th>Closed At</th><td>{esc(incident.closed_at)}</td></tr>
+            <tr><th>Affected Hosts</th><td>{esc_list(incident.affected_hosts)}</td></tr>
+            <tr><th>Source IPs</th><td>{esc_list(incident.source_ips)}</td></tr>
         </table>
 
         <div class="section">
@@ -481,12 +498,12 @@ def get_incident_report(
 
         <div class="section">
             <h2>Root Cause</h2>
-            <p>{incident.root_cause or "Not documented."}</p>
+            <p>{esc(incident.root_cause) or "Not documented."}</p>
         </div>
 
         <div class="section">
             <h2>Lessons Learned</h2>
-            <p>{incident.lessons_learned or "Not documented."}</p>
+            <p>{esc(incident.lessons_learned) or "Not documented."}</p>
         </div>
 
     </body>
