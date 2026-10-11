@@ -1,0 +1,19 @@
+[Unit]
+Description=Mini SOC Backend (FastAPI/Uvicorn)
+After=network.target postgresql.service
+
+[Service]
+User=mini-soc
+Group=mini-soc
+WorkingDirectory=/opt/mini-soc/backend
+EnvironmentFile=/etc/mini-soc/.env
+ExecStart=/opt/mini-soc/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mini-soc /var/lib/mini-soc/evidence
+ReadOnlyPaths=/etc/mini-soc
+
+[Install]
+WantedBy=multi-user.target

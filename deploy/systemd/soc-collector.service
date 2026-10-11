@@ -1,0 +1,19 @@
+[Unit]
+Description=Mini SOC Collector
+After=network.target
+
+[Service]
+User=mini-soc
+Group=mini-soc
+WorkingDirectory=/opt/mini-soc/collector
+EnvironmentFile=/etc/mini-soc/.env
+ExecStart=/opt/mini-soc/.venv/bin/python app.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mini-soc /var/lib/mini-soc/evidence
+ReadOnlyPaths=/etc/mini-soc
+
+[Install]
+WantedBy=multi-user.target

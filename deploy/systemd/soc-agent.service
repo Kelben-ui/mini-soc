@@ -1,0 +1,19 @@
+[Unit]
+Description=Mini SOC Log Agent
+After=network.target soc-collector.service
+
+[Service]
+User=mini-soc
+Group=mini-soc
+WorkingDirectory=/opt/mini-soc/agents/log_agent
+EnvironmentFile=/etc/mini-soc/.env
+ExecStart=/opt/mini-soc/.venv/bin/python agent.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mini-soc /var/lib/mini-soc /var/log
+ReadOnlyPaths=/etc/mini-soc
+
+[Install]
+WantedBy=multi-user.target

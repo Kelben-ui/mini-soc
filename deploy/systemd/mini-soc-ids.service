@@ -1,0 +1,19 @@
+[Unit]
+Description=Mini SOC IDS/IPS
+After=network.target
+
+[Service]
+User=mini-soc-ids
+Group=mini-soc-ids
+WorkingDirectory=/opt/mini-soc/ids
+EnvironmentFile=/etc/mini-soc/.env
+ExecStart=/opt/mini-soc/.venv/bin/python live_ids_ips.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mini-soc /var/log/mini_soc_ids.json
+ReadOnlyPaths=/etc/mini-soc /var/log
+
+[Install]
+WantedBy=multi-user.target

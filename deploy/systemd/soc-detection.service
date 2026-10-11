@@ -1,0 +1,19 @@
+[Unit]
+Description=Mini SOC Detection Engine (loop)
+After=network.target postgresql.service soc-backend.service
+
+[Service]
+User=mini-soc
+Group=mini-soc
+WorkingDirectory=/opt/mini-soc/detection
+EnvironmentFile=/etc/mini-soc/.env
+ExecStart=/opt/mini-soc/.venv/bin/python run.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mini-soc /var/lib/mini-soc
+ReadOnlyPaths=/etc/mini-soc
+
+[Install]
+WantedBy=multi-user.target
