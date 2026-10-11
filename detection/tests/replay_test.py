@@ -239,7 +239,7 @@ def main():
                 details={
                    "method": "GET",
                    "uri": "/",
-                   "status_code": 301,
+                   "status": 301,
                 },
                 raw="GET / HTTP/1.1",
                 timestamp=now - timedelta(seconds=i % 30),
@@ -272,7 +272,7 @@ def main():
             db,
             log_type="ids",
             category="ids",
-            action="alert",
+            action="ids_alert",
             details={
                 "signature": "TEST IDS SIGNATURE",
                 "priority": 1,

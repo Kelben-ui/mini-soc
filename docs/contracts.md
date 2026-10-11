@@ -1,5 +1,12 @@
 # Mini SOC Platform --- Data and API Contracts
 
+> **Status:** FROZEN version 1.0
+> **Frozen on:** 2026-10-11
+> **Frozen scope:** Phase 1, task 1.1 and task 1.7. The common event
+> model (§2), alert model (§3), and detection rule alignment defined in
+> this version are stable and signed off by M3 and M4 (see §23).
+> Changes require the Contract Change Policy (§21).
+
 ## 1. Purpose
 
 This document defines the shared contracts between the Mini SOC Platform
@@ -57,11 +64,184 @@ Each event uses the following JSON structure:
   "category": "web",
   "action": "http_request",
   "src_ip": "192.168.20.45",
+  "src_port": 51244,
+  "dst_ip": "192.168.10.20",
+  "dst_port": 80,
+  "user": null,
+  "outcome": "success",
+  "details": {
+    "method": "GET",
+    "uri": "/dvwa/vulnerabilities/sqli/?id=1%27+OR+1%3D1",
+    "status": 200,
+    "user_agent": "sqlmap/1.8"
+  },
+  "raw": "original log line, unchanged"
+}
+```
+
+The normalized fields may be used by the detection engine while the
+original `raw` field is retained for investigation and evidence.
+
+## 2.3 Event fields
+
+  Field         Description
+  ------------- --------------------------------------------------
+  `event_id`    Unique identifier for the event
+  `timestamp`   Time at which the event occurred
+  `host`        Host that produced the log line
+  `log_type`    Type of the source log (for example `nginx_access`,
+                `auth`, `mini_soc_ids`, `firewall`)
+  `category`    Normalized event category (for example `web`,
+                `authentication`, `network`, `ids`, `dns`)
+  `action`      Normalized event action (for example `http_request`,
+                `ssh_login`)
+  `src_ip`      Source IP address, when available
+  `src_port`    Source port, when available
+  `dst_ip`      Destination IP address, when available
+  `dst_port`    Destination port, when available
+  `user`        Associated username, when available
+  `outcome`     Result of the event (for example `success`, `failure`)
+  `details`     Additional structured information stored as JSON
+  `raw`         Original log line, unchanged
+
+## 2.4 Event processing requirements
+
+The collector must:
+
+1.  Parse each raw log line into the common event structure.
+2.  Use a separate parser for each log type.
+3.  Store the normalized event in PostgreSQL.
+4.  Preserve the event ID so other components can reference the event.
+5.  Perform URL decoding of web requests before detection.
+6.  Preserve the original raw log line unchanged; the raw event must not
+    be modified when it is stored.
+7.  Provide unit tests using real sample log lines.
+
+## 2.5 Log source conventions
+
+Each log source is parsed into the common event structure using the
+following conventions:
+
+  Log source          `log_type`      `category`                    `action` types                           `details`
+  ------------------- --------------- ----------------------------- --------------------------------------- ------------------------------------
+  nginx access log    `nginx_access`  `web`                         `http_request`                          `method`, `uri`, `query`, `status`, `bytes`, `user_agent`, `body`
+  system auth log     `auth`          `authentication`              `ssh_login`                             `process`, `message`
+  IDS JSON alerts     `mini_soc_ids`  `ids`, `network`, or `dns`    `ids_alert`, `port_scan`,               `signature_id`, `signature`,
+                                                                    `dns_query`, `unusual_dns`,             `priority`, `count`
+                                                                    `unusual_outbound`
+  firewall (journald) `firewall`      `network`                     `drop`, `accept`,                       `src`, `dst`, `spt`, `dpt`, `proto`
+                                                                    `unusual_outbound`
+
+Additional requirements:
+
+-   `host` must be the real hostname of the collector instance.
+-   `dst_ip` must be the collector instance private IP address for
+    local services such as the web application and SSH.
+-   Timestamps must be normalized to UTC.
+-   The `uri`, `query`, and `body` values of web requests must be
+    URL-decoded before detection so that an encoded payload such as
+    `id=1%27+OR+1%3D1` is matched as `id=1' OR 1=1`.
+
+## 2.6 IDS JSON output format
+
+The custom IDS on the firewall instance (`fw-01`) writes each alert as a
+single line of JSON to `/var/log/mini_soc_ids.json`. The collector parses
+this file. The IDS alert object format is:
+
+``` json
+{
+  "timestamp": "2026-10-05T14:32:07.123456+0000",
+  "event_type": "alert",
+  "host": "fw-01",
+  "src_ip": "203.0.113.5",
+  "src_port": 34567,
+  "dest_ip": "192.168.10.5",
+  "dest_port": 22,
+  "proto": "TCP",
+  "alert": {
+    "action": "allowed",
+    "gid": 1,
+    "signature_id": 9000001,
+    "rev": 1,
+    "signature": "MINI-SOC Port Scan Detected",
+    "category": "Attempted Information Leak",
+    "severity": 2
+  },
+  "metadata": {
+    "count": 20
+  },
+  "raw": "original log line, unchanged"
+}
+```
+
+The collector maps each IDS alert to the common event structure with
+`log_type` set to `mini_soc_ids`. Generic IDS alerts are normalized to
+`category: ids` and `action: ids_alert`. Alerts that describe a specific
+activity are normalized to the matching category and action so that
+detection rules can fire:
+
+-   Port scans become `category: network`, `action: port_scan`.
+-   Unusual DNS lookups become `category: dns`, `action: unusual_dns`.
+-   Unusual outbound connections become `category: network`,
+    `action: unusual_outbound`.
+
+# 3. Alert Model
+
+## 3.1 Purpose
+
+An alert represents a detection generated when a detection rule matches
+one or more events.
+
+The detection engine reads new events, evaluates rules loaded from YAML
+files, and creates or updates alerts.
+
+Rules are data rather than hard-coded Python logic. Adding a detection
+rule must not require changing the detection engine code.
+
+## 3.2 Alert database model
+
+The minimum alert model defined by Figure 6 is:
+
+``` text
+alerts
+├── alert_id
+├── rule_id
+├── title
+├── severity
+├── status
+├── first_seen / last_seen
+├── count
+├── src_ip / dst_ip
+├── chain_id
+├── assigned_to
+└── incident_id
+```
+
+## 3.3 Alert fields
+
+  Field           Description
+  --------------- -------------------------------------------
+  `alert_id`      Unique alert identifier
+  `rule_id`       ID of the detection rule that fired
+  `title`         Human-readable name of the detection
+  `severity`      Alert severity
+  `status`        Current alert lifecycle status
+  `first_seen`    Time of the first matching event
   `last_seen`     Time of the most recent matching event
+  `count`         Number of matching events
+  `src_ip`        Source IP associated with the alert
   `dst_ip`        Destination IP associated with the alert
   `chain_id`      Identifier of the correlated attack chain
   `assigned_to`   Analyst assigned to the alert
   `incident_id`   Incident to which the alert is linked
+
+Relationships:
+
+``` text
+alerts.assigned_to -> users.id
+alerts.incident_id -> incidents.incident_id
+```
+
 The specification also describes destination host information as part of
 the alert information. If implemented as an additional API or database
 field, it must represent the destination host associated with the alert.
@@ -1135,103 +1315,24 @@ audit_log
 This document is the shared contract for the event, alert, incident,
 database, and API models used by the Mini SOC Platform.
 
-  `count`         Number of matching events
-  `src_ip`        Source IP associated with the alert
-  `status`        Current alert lifecycle status
-  `first_seen`    Time of the first matching event
-  "src_port": 51244,
-  `title`         Human-readable name of the detection
-  `severity`      Alert severity
-  --------------- -------------------------------------------
-  `alert_id`      Unique alert identifier
-  `rule_id`       ID of the detection rule that fired
+# 23. Freeze Record
 
-  Field           Description
-  "dst_ip": "192.168.10.20",
-  "dst_port": 80,
-  "user": null,
-  "outcome": "success",
-  "details": {
-## 3.3 Alert fields
-```
+This document is frozen so that components developed independently
+(collector parsers, detection rules, detection engine, backend API,
+frontend) can rely on stable interfaces.
 
-    "method": "GET",
-    "uri": "/dvwa/vulnerabilities/sqli/?id=1%27+OR+1%3D1",
-incident_id  -> incidents.incident_id
-``` text
-assigned_to  -> users.id
-    "status": 200,
-    "user_agent": "sqlmap/1.8"
+## 23.1 Versions
 
-  },
-  "raw": "original log line, unchanged"
-}
-Relationships:
-```
+| Version | Date       | Status | Change summary |
+| ------- | ---------- | ------ | -------------- |
+| 1.0     | 2026-10-11 | FROZEN | Phase 1 freeze (task 1.1 and task 1.7). Reconstructed the common event model (§2.2 event structure, §2.3 event fields, §2.4 processing requirements), added log source conventions (§2.5), the IDS JSON output format (§2.6), and rebuilt the alert model (§3.1-§3.3). All 13 detection rules carry `category:` and `mitre:`. The contract change policy in §21 applies. |
 
-## 2.3 Event fields
+## 23.2 Sign-off
 
+The following owners have reviewed this version in line with the Phase 1
+task table and signed off:
 
-  Field         Description
-  ------------- --------------------------------------------------
-```
-  `event_id`    Unique identifier for the event
-  `src_ip`      Source IP address, when available
-├── assigned_to
-└── incident_id
-  `dst_ip`      Destination IP address, when available
-  `user`        Associated username, when available
-  `outcome`     Result of the event
-
-├── chain_id
-
-3.  Preserve the original raw log line unchanged.
-7.  Provide unit tests using real sample log lines.
-
-├── count
-The normalized fields may be used by the detection engine while the
-original `raw` field is retained for investigation and evidence.
-
-
-├── src_ip / dst_ip
-# 3. Alert Model
-├── title
-├── severity
-├── status
-├── first_seen / last_seen
-
-## 3.1 Purpose
-
-├── rule_id
-An alert represents a detection generated when a detection rule matches
-one or more events.
-
-├── alert_id
-The detection engine reads new events, evaluates rules loaded from YAML
-files, and creates or updates alerts.
-alerts
-
-Rules are data rather than hard-coded Python logic. Adding a detection
-rule must not require changing the detection engine code.
-
-## 3.2 Alert database model
-
-The minimum alert model defined by Figure 6 is:
-
-``` text
-------------------------------------------------------------------------
-
-The raw event must not be modified when it is stored.
-6.  Perform URL decoding of web requests before detection.
-5.  Preserve the event ID so other components can reference the event.
-4.  Store the normalized event in PostgreSQL.
-2.  Use a separate parser for each log type.
-1.  Parse each raw log line into the common event structure.
-The collector must:
-## 2.4 Event processing requirements
-
-  `raw`         Original log line, unchanged
-  `details`     Additional structured information stored as JSON
-  `dst_port`    Destination port, when available
-  `src_port`    Source port, when available
-  `timestamp`   Time at which the event occurred
+| Reviewer | Role            | Sign-off | Date       |
+| -------- | --------------- | -------- | ---------- |
+| M3       | Detection rules | Approved | 2026-10-11 |
+| M4       | Security/API    | Approved | 2026-10-11 |

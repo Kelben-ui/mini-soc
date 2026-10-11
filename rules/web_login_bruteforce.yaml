@@ -1,6 +1,7 @@
 id: WEB-BF-001
 name: Web login brute force
 severity: HIGH
+category: web
 enabled: true
 
 match:

@@ -1,6 +1,7 @@
 id: WEB-CMD-001
 name: Command injection
 severity: HIGH
+category: web
 enabled: true
 
 match:

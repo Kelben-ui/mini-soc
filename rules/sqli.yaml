@@ -1,6 +1,7 @@
 id: WEB-SQLI-001
 name: SQL injection
 severity: HIGH
+category: web
 enabled: true
 
 match:
