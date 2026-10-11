@@ -12,7 +12,13 @@ def load_rules(rules_dir="rules"):
         if not rule:
             continue
 
+        if not isinstance(rule, dict):
+            continue
+
         if rule.get("enabled", True) is False:
+            continue
+
+        if "id" not in rule:
             continue
 
         rules.append(rule)

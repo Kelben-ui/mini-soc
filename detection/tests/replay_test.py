@@ -1,10 +1,25 @@
 from datetime import datetime, timedelta, timezone
 import uuid
 
-from backend.app.database import SessionLocal
+from backend.app.database import SessionLocal, Base, engine
 from backend.app.models.event import Event
 from backend.app.models.alert import Alert
 from backend.app.models.alert_event import AlertEvent
+from backend.app.models import (
+    user,
+    event as _event_model,
+    alert as _alert_model,
+    alert_event as _alert_event_model,
+    incident,
+    note,
+    evidence,
+    custody_log,
+    action,
+    audit_log,
+    incident_status_history,
+)
+
+Base.metadata.create_all(bind=engine)
 
 from detection.engine.engine import run_detection
 from detection.engine.rule_loader import load_rules
