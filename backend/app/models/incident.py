@@ -71,6 +71,16 @@ class Incident(Base):
         nullable=True
     )
 
+    contained_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
     root_cause: Mapped[str | None] = mapped_column(
         Text,
         nullable=True

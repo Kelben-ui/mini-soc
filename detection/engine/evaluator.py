@@ -32,6 +32,22 @@ def get_search_text(event):
     return " ".join(parts).lower()
 
 
+def _get_nested_value(obj, path):
+    if not path:
+        return obj
+    current = obj
+    for part in str(path).split('.'):
+        if isinstance(current, dict):
+            if part not in current:
+                return None
+            current = current[part]
+        else:
+            current = getattr(current, part, None)
+            if current is None:
+                return None
+    return current
+
+
 def matches_rule(event, rule):
     conditions = rule.get("match", {})
 
@@ -39,7 +55,7 @@ def matches_rule(event, rule):
 
         # Normal standardized event fields
         if field != "details":
-            actual_value = get_event_value(event, field)
+            actual_value = _get_nested_value(event, field)
 
             if actual_value != expected_value:
                 return False
@@ -48,21 +64,33 @@ def matches_rule(event, rule):
     detail_conditions = conditions.get("details", {})
 
     for field, expected_value in detail_conditions.items():
-        actual_value = get_detail_value(event, field)
+        actual_value = _get_nested_value(event, f"details.{field}") if '.' not in field else _get_nested_value(event, field)  # handle nested
+
+        # also try direct
+        if actual_value is None and '.' not in field:
+            actual_value = get_detail_value(event, field)
 
         if actual_value != expected_value:
             return False
 
     patterns = rule.get("contains", [])
+    regex_patterns = rule.get("regex", [])
+
+    search_text = get_search_text(event) if (patterns or regex_patterns) else ""
 
     if patterns:
-        search_text = get_search_text(event)
-
-        if not any(
-            pattern.lower() in search_text
-            for pattern in patterns
-        ):
+        if not any(str(pattern).lower() in search_text for pattern in patterns):
             return False
+
+    if regex_patterns:
+        import re
+        for pat in regex_patterns:
+            try:
+                if not re.search(pat, search_text, re.IGNORECASE):
+                    return False
+            except Exception:
+                if str(pat).lower() not in search_text:
+                    return False
 
     return True
 
@@ -110,19 +138,14 @@ def get_threshold_events(events, rule):
     ]
 
     if group_by:
-        latest_group = tuple(
-            get_event_value(latest_event, field)
-            for field in group_by
-        )
-
         window_events = [
             event
             for event in window_events
             if tuple(
-                get_event_value(event, field)
+                _get_nested_value(event, field) if '.' in field else get_event_value(event, field)
                 for field in group_by
-            ) == latest_group
-        ]
+            )
+        ]  # threshold over groups present in window (per-group evaluation by caller)
 
     if len(window_events) >= required_count:
         return window_events

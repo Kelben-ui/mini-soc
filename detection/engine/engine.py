@@ -66,20 +66,19 @@ def correlate_alerts(db: Session):
             categories = set()
 
             for alert in related_alerts:
+                cat = getattr(alert, "category", None)
+                if cat:
+                    categories.add(str(cat))
+                    continue
                 rule_id = alert.rule_id
-
                 if rule_id.startswith("SSH"):
                     categories.add("authentication")
-
                 elif rule_id.startswith("WEB"):
                     categories.add("web")
-
                 elif rule_id.startswith("NET"):
                     categories.add("network")
-
                 elif rule_id.startswith("DNS"):
                     categories.add("dns")
-
                 elif rule_id.startswith("IDS"):
                     categories.add("ids")
 

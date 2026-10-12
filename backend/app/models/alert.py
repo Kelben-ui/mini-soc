@@ -74,3 +74,18 @@ class Alert(Base):
         ForeignKey("incidents.incident_id"),
         nullable=True
     )
+
+    dst_host: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True
+    )
+
+    mitre: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
+    category: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True
+    )

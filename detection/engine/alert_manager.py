@@ -40,16 +40,35 @@ def create_or_update_alert(db: Session, rule: dict, events: list):
     if existing_alert:
         alert = existing_alert
     else:
+        severity = rule.get("severity")
+        # map IDS priority if present on latest event details
+        try:
+            details = value(latest_event, "details") or {}
+            if isinstance(details, dict) and "priority" in details:
+                pr = details["priority"]
+                if isinstance(pr, str):
+                    pr = int(pr)
+                if pr == 1:
+                    severity = "HIGH"
+                elif pr == 2:
+                    severity = "MEDIUM"
+                elif pr == 3:
+                    severity = "LOW"
+        except Exception:
+            pass
+
         alert = Alert(
             rule_id=rule_id,
             title=rule["name"],
-            severity=rule["severity"],
+            severity=severity,
             status="NEW",
             first_seen=now,
             last_seen=now,
             src_ip=src_ip,
             dst_ip=dst_ip,
             count=0,
+            category=rule.get("category"),
+            mitre=rule.get("mitre"),
         )
         db.add(alert)
         db.flush()
