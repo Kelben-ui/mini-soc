@@ -1,7 +1,6 @@
 
 #!/usr/bin/env python3
-"""Mini SOC IDS (detection only). Replaces Suricata.
-Writes Suricata-style alerts to /var/log/suricata/eve.json"""
+"""Mini SOC IDS (detection only). Writes alerts to /var/log/mini_soc_ids.json"""
 import subprocess
 import re
 import sys
@@ -12,15 +11,16 @@ import socket
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-EVE_FILE = "/var/log/mini_soc_ids.json"
-HOSTNAME = "fw-01"
-WHITELIST = set()
+# Config via env/ids.yaml if present; defaults match spec
+EVE_FILE = os.getenv("IDS_OUTPUT", "/var/log/mini_soc_ids.json")
+HOSTNAME = os.getenv("SOC_HOSTNAME", "fw-01")
+WHITELIST = set([ip.strip() for ip in os.getenv("IDS_ALLOWLIST", "").split(",") if ip.strip()])
 
-SCAN_PORTS = 20      # distinct ports
-SCAN_WINDOW = 60     # seconds
-SSH_THRESHOLD = 10   # failed logins
-SSH_WINDOW = 300     # seconds
-COOLDOWN = 60        # seconds between repeat alerts per IP
+SCAN_PORTS = int(os.getenv("IDS_SCAN_THRESHOLD", "15"))
+SCAN_WINDOW = int(os.getenv("IDS_SCAN_WINDOW_SEC", "60"))
+SSH_THRESHOLD = 10
+SSH_WINDOW = 300
+COOLDOWN = 60
 
 try:
     LOCAL_IP = socket.gethostbyname(socket.gethostname())
@@ -45,7 +45,7 @@ def now_eve():
 
 
 def parse_line(line):
-    if "NMAP_SCAN_PROBE" in line:
+    if "NMAP_SCAN_PROBE" in line or "SOC_DROP:" in line:
         src = re.search(r"SRC=([0-9.]+)", line)
         dst = re.search(r"DST=([0-9.]+)", line)
         spt = re.search(r"SPT=(\d+)", line)
@@ -108,7 +108,7 @@ def write_alert(kind, info, count, raw):
 def monitor_journal():
     print("[*] Mini SOC IDS (detection only) started")
     print("[*] Monitoring journal logs")
-    print(f"[*] Writing Suricata-style alerts to {EVE_FILE}")
+    print(f"[*] Writing alerts to {EVE_FILE}")
 
     cmd = ["journalctl", "-f", "-n", "0", "-o", "cat"]
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
