@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { getAlerts } from "../api/alerts";
 
 const SEVERITY_OPTIONS = ["", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
-const STATUS_OPTIONS = ["", "NEW", "INVESTIGATING", "CONTAINED", "RESOLVED", "FALSE_POSITIVE"];
+const STATUS_OPTIONS = ["", "NEW", "INVESTIGATING", "CONTAINED", "RESOLVED", "FALSE POSITIVE"];
 
 export default function AlertsList() {
   const [alerts, setAlerts] = useState([]);
