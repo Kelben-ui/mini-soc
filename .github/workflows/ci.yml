@@ -25,6 +25,7 @@ jobs:
       - name: Detection replay (13 rules vs SQLite)
         env:
           DATABASE_URL: sqlite:///./ci-replay.db
+          PYTHONPATH: .
         run: |
           python detection/tests/replay_test.py 2>&1 | tail -40
 
