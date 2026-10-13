@@ -1,0 +1,16 @@
+Oct 13 09:17:00 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52820 ssh2
+Oct 13 09:17:01 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52821 ssh2
+Oct 13 09:17:02 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52822 ssh2
+Oct 13 09:17:03 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52823 ssh2
+Oct 13 09:17:04 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52824 ssh2
+Oct 13 09:17:05 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52825 ssh2
+Oct 13 09:17:06 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52826 ssh2
+Oct 13 09:17:07 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52827 ssh2
+Oct 13 09:17:08 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52828 ssh2
+Oct 13 09:17:09 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 52829 ssh2
+Oct 13 09:17:10 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 528210 ssh2
+Oct 13 09:17:11 ip-172-31-13-199 sshd[2203]: Failed password for root from 203.0.113.9 port 528211 ssh2
+Oct 13 09:17:30 ip-172-31-13-199 sshd[2261]: Accepted password for ubuntu from 203.0.113.9 port 52821 ssh2
+Oct 13 09:17:31 ip-172-31-13-199 sshd[2261]: Accepted publickey for ubuntu from 143.105.152.60 port 52313 ssh2: RSA SHA256:abcd
+Oct 13 09:17:25 ip-172-31-13-199 sshd[2289]: Invalid user guest from 203.0.113.9 port 53777
+Oct 13 09:17:40 ip-172-31-13-199 sudo: pam_unix(sudo:session): session opened for user root by (uid=0)

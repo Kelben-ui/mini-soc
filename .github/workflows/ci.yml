@@ -19,9 +19,14 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
-      - name: Run Python tests
+      - name: Run collector parser tests
         run: |
-          pytest -v backend detection 2>&1 | tail -40
+          pytest -v collector 2>&1 | tail -40
+      - name: Detection replay (13 rules vs SQLite)
+        env:
+          DATABASE_URL: sqlite:///./ci-replay.db
+        run: |
+          python detection/tests/replay_test.py 2>&1 | tail -40
 
   frontend:
     runs-on: ubuntu-latest

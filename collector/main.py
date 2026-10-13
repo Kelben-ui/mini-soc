@@ -3,22 +3,21 @@ import requests
 import os
 
 from collector.parsers.suricata_parser import parse as parse_suricata
-def parse_mini_soc_ids(line):
-    return parse_suricata(line, log_type="mini_soc_ids")
 from collector.parsers.nginx_access_parser import parse as parse_nginx_access
 from collector.parsers.nginx_error_parser import parse as parse_nginx_error
 from collector.parsers.auth_parser import parse as parse_auth
-
-@app.on_event("startup")
-def ensure_dirs():
-    import os
-    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
-    os.makedirs(evidence_dir, exist_ok=True)
-
+from collector.parsers.firewall_parser import parse as parse_firewall
 
 app = FastAPI()
 
-BACKEND_URL = f"{os.environ.get('BACKEND_URL', 'http://127.0.0.1:8000')}/api/ingest"
+
+def parse_mini_soc_ids(line):
+    return parse_suricata(line, log_type="mini_soc_ids")
+
+
+BACKEND_URL = (
+    f"{os.environ.get('BACKEND_URL', 'http://127.0.0.1:8000')}/api/ingest"
+)
 
 PARSERS = {
     "suricata": parse_suricata,
@@ -26,7 +25,14 @@ PARSERS = {
     "nginx_access": parse_nginx_access,
     "nginx_error": parse_nginx_error,
     "auth": parse_auth,
+    "firewall": parse_firewall,
 }
+
+
+@app.on_event("startup")
+def ensure_dirs():
+    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
+    os.makedirs(evidence_dir, exist_ok=True)
 
 
 @app.get("/")
@@ -74,12 +80,27 @@ def ingest(data: dict):
         "Content-Type": "application/json"
     }
 
-    response = requests.post(
-        BACKEND_URL,
-        headers=headers,
-        json={"events": [event]},
-        timeout=10
-    )
+    # Backend unreachable/timeout or a backend 5xx -> 503 so the log agent
+    # knows to buffer the line and retry (contract: collector returns 503
+    # when the backend is down; the agent then buffers).
+    try:
+        response = requests.post(
+            BACKEND_URL,
+            headers=headers,
+            json={"events": [event]},
+            timeout=10
+        )
+    except requests.RequestException:
+        raise HTTPException(
+            status_code=503,
+            detail="backend unreachable; event not forwarded"
+        )
+
+    if response.status_code >= 500:
+        raise HTTPException(
+            status_code=503,
+            detail=f"backend error (HTTP {response.status_code})"
+        )
 
     return {
         "backend_status": response.status_code,

@@ -5,7 +5,7 @@ category: web
 enabled: true
 
 match:
-  log_type: nginx
+  log_type: nginx_access
   category: web
   action: http_request
   details:

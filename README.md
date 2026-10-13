@@ -15,6 +15,8 @@ A self-contained Security Operations Center (SOC) platform for detection, alerti
 
 ## Deployment notes
 - **Detection loop:** production runs `mini-soc-worker.service` (`python -m detection.worker`). `deploy/systemd/soc-detection.service` is the legacy `detection/run.py` loop kept for reference — do not enable both (alerts would be processed twice).
+- **nginx logging (Phase 1.2):** nginx must use the `soc` log format from `deploy/nginx/mini-soc.conf` (`access_log /var/log/nginx/access.log soc;`) — it appends `body=...` at the end of each line so the collector parser can URL-decode `uri`/`query`/`body` twice. Without it, web payloads arrive encoded and the WEB-* rules never fire.
+- **Log agent (Phase 1.8):** `agents/log_agent/agent.py` tails `{nginx access.log, nginx error.log, auth.log, mini_soc_ids.json, kern.log}` and forwards raw lines to the collector. When the backend is down the collector answers `503` and the agent spools the lines to `AGENT_SPOOL_DIR` (`/var/lib/mini-soc/agent/spool`), replaying them once the collector is reachable.
 - **Lab EC2 instance:** the live lab box runs the repo at `/home/ubuntu/mini-soc` (user `ubuntu`) with units `mini-soc-backend`, `mini-soc-collector`, `mini-soc-worker`, `mini-soc-ids` instead of `/opt/mini-soc` + `soc-*`. The repo is the single source of truth; the box is expected to be re-synced/rebuilt from `origin/main` (see recovery notes in this file below).
 - **Security Group:** dashboard port (80) must be restricted to analyst IPs only (see Phase 0.3).
 
@@ -34,11 +36,13 @@ See [docs/architecture.md](docs/architecture.md).
 - Venv: `/opt/mini-soc/.venv/`
 - Config: `/etc/mini-soc/.env` (0640)
 - Evidence: `/var/lib/mini-soc/evidence/`
+- Agent spool: `/var/lib/mini-soc/agent/spool/`
 - Logs: journald (systemd units)
 - IDS output: `/var/log/mini_soc_ids.json`
 
 ## Detection
-Replay test: `cd /opt/mini-soc && PYTHONPATH=/opt/mini-soc .venv/bin/python detection/tests/replay_test.py` (expects "REPLAY TEST PASSED")
+Replay test (13 rules against SQLite or the configured DB):
+`cd /opt/mini-soc && PYTHONPATH=/opt/mini-soc DATABASE_URL=sqlite:///./ci-replay.db .venv/bin/python detection/tests/replay_test.py` (expects "REPLAY TEST PASSED")
 
 ## Recovering the EC2 box from the repo (single source of truth)
 If the lab box becomes unreachable ("kernel accepts TCP, sshd/nginx never answer"), it is likely wedged, not hacked. Recovery by an account with EC2 access (console → Instance state → Reboot); after boot, from the box:

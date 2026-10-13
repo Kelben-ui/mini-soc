@@ -135,7 +135,7 @@ def main():
         for i in range(20):
             event = make_event(
                 db,
-                log_type="nginx",
+                log_type="nginx_access",
                 category="web",
                 action="http_request",
                 outcome="failure",
@@ -156,7 +156,7 @@ def main():
 
         event = make_event(
             db,
-            log_type="nginx",
+            log_type="nginx_access",
             category="web",
             action="http_request",
             details={
@@ -174,7 +174,7 @@ def main():
 
         event = make_event(
             db,
-            log_type="nginx",
+            log_type="nginx_access",
             category="web",
             action="http_request",
             details={
@@ -192,7 +192,7 @@ def main():
 
         event = make_event(
             db,
-            log_type="nginx",
+            log_type="nginx_access",
             category="web",
             action="http_request",
             details={
@@ -210,7 +210,7 @@ def main():
 
         event = make_event(
             db,
-            log_type="nginx",
+            log_type="nginx_access",
             category="web",
             action="http_request",
             details={
@@ -228,7 +228,7 @@ def main():
 
         event = make_event(
             db,
-            log_type="nginx",
+            log_type="nginx_access",
             category="web",
             action="http_request",
             details={
@@ -248,7 +248,7 @@ def main():
         for i in range(301):
             event = make_event(
                 db,
-                log_type="nginx",
+                log_type="nginx_access",
                 category="web",
                 action="http_request",
                 details={

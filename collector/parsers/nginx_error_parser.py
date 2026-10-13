@@ -1,6 +1,9 @@
 import re
 import uuid
-from datetime import datetime
+
+from datetime import datetime, timezone
+
+from collector.parsers.common import get_hostname, to_utc_iso
 
 
 LOG_PATTERN = re.compile(
@@ -14,7 +17,9 @@ LOG_PATTERN = re.compile(
 
 
 def parse(line):
-    match = LOG_PATTERN.match(line.strip())
+    line = line.strip()
+
+    match = LOG_PATTERN.match(line)
 
     if not match:
         return None
@@ -22,17 +27,19 @@ def parse(line):
     data = match.groupdict()
 
     try:
-        timestamp = datetime.strptime(
+        ts_dt = datetime.strptime(
             data["timestamp"],
-            "%Y/%m/%d %H:%M:%S"
+            "%Y/%m/%d %H:%M:%S",
         )
     except ValueError:
         return None
 
+    ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+
     return {
         "event_id": str(uuid.uuid4()),
-        "timestamp": timestamp.isoformat(),
-        "host": "web-01",
+        "timestamp": to_utc_iso(ts_dt),
+        "host": get_hostname(),
         "log_type": "nginx_error",
         "category": "web",
         "action": "error",
@@ -49,5 +56,5 @@ def parse(line):
             "connection": int(data["connection"]),
             "message": data["message"],
         },
-        "raw": line.strip(),
+        "raw": line,
     }
