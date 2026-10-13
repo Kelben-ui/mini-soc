@@ -5,9 +5,9 @@ After=network.target
 [Service]
 User=mini-soc
 Group=mini-soc
-WorkingDirectory=/opt/mini-soc/collector
+WorkingDirectory=/opt/mini-soc
 EnvironmentFile=/etc/mini-soc/.env
-ExecStart=/opt/mini-soc/.venv/bin/python app.py
+ExecStart=/opt/mini-soc/.venv/bin/uvicorn collector.main:app --host 127.0.0.1 --port 9000
 Restart=always
 RestartSec=2
 NoNewPrivileges=yes

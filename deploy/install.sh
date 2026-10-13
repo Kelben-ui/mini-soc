@@ -41,12 +41,12 @@ fi
 log "Installing systemd units..."
 cp "$APP_DIR/deploy/systemd/soc-backend.service" /etc/systemd/system/
 cp "$APP_DIR/deploy/systemd/soc-collector.service" /etc/systemd/system/
-cp "$APP_DIR/deploy/systemd/soc-detection.service" /etc/systemd/system/
+cp "$APP_DIR/deploy/systemd/mini-soc-worker.service" /etc/systemd/system/
 cp "$APP_DIR/deploy/systemd/soc-agent.service" /etc/systemd/system/
 cp "$APP_DIR/deploy/systemd/mini-soc-ids.service" /etc/systemd/system/
 
 systemctl daemon-reload
-systemctl enable --now soc-backend.service soc-collector.service soc-detection.service soc-agent.service mini-soc-ids.service 2>/dev/null || true
+systemctl enable --now soc-backend.service soc-collector.service mini-soc-worker.service soc-agent.service mini-soc-ids.service 2>/dev/null || true
 
 log "Install complete (idempotent)."
-echo "Services status: systemctl status soc-backend soc-collector soc-detection soc-agent mini-soc-ids"
+echo "Services status: systemctl status soc-backend soc-collector mini-soc-worker soc-agent mini-soc-ids"

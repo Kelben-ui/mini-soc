@@ -33,7 +33,7 @@ if [ -f frontend/package.json ]; then
 fi
 
 log "Restarting services..."
-systemctl restart soc-backend soc-collector soc-detection soc-agent mini-soc-ids 2>/dev/null || true
+systemctl restart soc-backend soc-collector mini-soc-worker soc-agent mini-soc-ids 2>/dev/null || true
 
 log "Update complete."
-systemctl status --no-pager soc-backend soc-collector soc-detection 2>&1 | tail -5
+systemctl status --no-pager soc-backend soc-collector mini-soc-worker 2>&1 | tail -5
