@@ -1,19 +1,32 @@
 [Unit]
 Description=Mini SOC IDS/IPS
-After=network.target
+Documentation=file:@APP_DIR@/README.md
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-User=mini-soc-ids
-Group=mini-soc-ids
-WorkingDirectory=/opt/mini-soc/ids
-EnvironmentFile=/etc/mini-soc/.env
-ExecStart=/opt/mini-soc/.venv/bin/python live_ids_ips.py
+Type=simple
+User=@IDS_USER@
+Group=@IDS_USER@
+SupplementaryGroups=systemd-journal
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@ENV_FILE@
+ExecStart=@VENV_DIR@/bin/python -m ids.live_ids_ips
 Restart=always
 RestartSec=2
 NoNewPrivileges=yes
+PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/opt/mini-soc /var/log/mini_soc_ids.json
-ReadOnlyPaths=/etc/mini-soc /var/log
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+UMask=0027
+ReadWritePaths=/var/log/mini_soc_ids.json
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

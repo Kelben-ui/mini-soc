@@ -4,6 +4,10 @@ When the collector/backend is down the agent spools the raw lines to disk
 (AGENT_SPOOL_DIR) and replays them once the collector is reachable again,
 so no log data is lost during a backend outage.
 
+Run as a module so the repo root is importable::
+
+    python -m agents.log_agent.agent
+
 Watched sources (log_type):
     /var/log/nginx/access.log       nginx_access
     /var/log/nginx/error.log        nginx_error
@@ -13,19 +17,16 @@ Watched sources (log_type):
 """
 
 import os
-import time
-import requests
 import threading
+import time
+
+import requests
+
+from mini_soc_config import get_env, spool_dir
 
 
-COLLECTOR_URL = os.getenv(
-    "COLLECTOR_URL",
-    "http://127.0.0.1:9000/ingest"
-)
-SPOOL_DIR = os.getenv(
-    "AGENT_SPOOL_DIR",
-    "/var/lib/mini-soc/agent/spool"
-)
+COLLECTOR_URL = get_env("COLLECTOR_URL", "http://127.0.0.1:9000/ingest")
+SPOOL_DIR = str(spool_dir())
 
 LOG_FILES = {
     "/var/log/nginx/access.log": "nginx_access",
@@ -37,7 +38,7 @@ LOG_FILES = {
 
 
 def spool_path(log_type):
-    return os.path.join(SPOOL_DIR, f"{log_type}.spool")
+    return f"{SPOOL_DIR}/{log_type}.spool"
 
 
 def queue_line(log_type, line):
@@ -133,14 +134,23 @@ def watch_log(log_file, log_type):
             queue_line(log_type, line)
 
 
-for log_file, log_type in LOG_FILES.items():
-    thread = threading.Thread(
-        target=watch_log,
-        args=(log_file, log_type),
-        daemon=True
-    )
-    thread.start()
+def main():
+    os.makedirs(SPOOL_DIR, exist_ok=True)
+
+    threads = []
+
+    for log_file, log_type in LOG_FILES.items():
+        thread = threading.Thread(
+            target=watch_log,
+            args=(log_file, log_type),
+            daemon=True
+        )
+        thread.start()
+        threads.append(thread)
+
+    while True:
+        time.sleep(60)
 
 
-while True:
-    time.sleep(60)
+if __name__ == "__main__":
+    main()

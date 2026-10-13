@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 import os
 import yaml
 
+from mini_soc_config import rules_dir
+
 from ..dependencies import get_current_user
 
 router = APIRouter(
@@ -9,8 +11,8 @@ router = APIRouter(
     tags=["Rules"]
 )
 
-# Adjust this path to point to wherever your YAML rules files are stored on disk
-RULES_DIR = os.getenv("RULES_DIR", "../../rules") 
+# Absolute by default (RULES_DIR env -> <repo>/rules); never CWD-relative.
+RULES_DIR = str(rules_dir())
 
 @router.get("/rules")
 def get_rules(

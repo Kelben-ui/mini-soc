@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const client = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL });
+// Base URL is empty by default so every call is same-origin ("/api/..."),
+// which works through the Vite dev proxy and the nginx /api proxy. Set
+// VITE_API_BASE_URL only when the API is on a different origin.
+const client = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || "" });
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem("jwt");

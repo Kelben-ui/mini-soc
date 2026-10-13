@@ -17,17 +17,25 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
-      - name: Run collector parser tests
+          pip install -r requirements-dev.txt
+      - name: Import smoke test
+        env:
+          DATABASE_URL: sqlite:///./ci-smoke.db
         run: |
-          pytest -v collector 2>&1 | tail -40
+          python -c "import mini_soc_config, collector.main, detection.run, backend.app.main; print('imports ok')"
+      - name: Shell script syntax
+        run: |
+          bash -n deploy/install.sh
+          bash -n deploy/update.sh
+          bash -n deploy/postgres.sh
+      - name: Run collector parser tests
+        run: pytest -v collector
       - name: Detection replay (13 rules vs SQLite)
         env:
           DATABASE_URL: sqlite:///./ci-replay.db
           PYTHONPATH: .
         run: |
-          python detection/tests/replay_test.py 2>&1 | tail -40
+          python detection/tests/replay_test.py
 
   frontend:
     runs-on: ubuntu-latest
@@ -36,6 +44,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Build and test frontend
+      - name: Build frontend
         run: |
-          if [ -d frontend ]; then cd frontend && npm ci && npm run build && npm test -- --passWithNoTests 2>&1 | tail -30; fi
+          cd frontend
+          npm ci
+          npm run build

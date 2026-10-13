@@ -1,6 +1,13 @@
-
 #!/usr/bin/env python3
-"""Mini SOC IDS (detection only). Writes alerts to /var/log/mini_soc_ids.json"""
+"""Mini SOC IDS (detection only). Writes alerts to /var/log/mini_soc_ids.json
+
+Run as a module (repo root on sys.path) or as a script::
+
+    python -m ids.live_ids_ips
+
+Reading the systemd journal needs either root or membership in the
+``systemd-journal`` group; the packaged unit grants that group.
+"""
 import subprocess
 import re
 import sys
@@ -11,16 +18,22 @@ import socket
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-# Config via env/ids.yaml if present; defaults match spec
-EVE_FILE = os.getenv("IDS_OUTPUT", "/var/log/mini_soc_ids.json")
-HOSTNAME = os.getenv("SOC_HOSTNAME", "fw-01")
-WHITELIST = set([ip.strip() for ip in os.getenv("IDS_ALLOWLIST", "").split(",") if ip.strip()])
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-SCAN_PORTS = int(os.getenv("IDS_SCAN_THRESHOLD", "15"))
-SCAN_WINDOW = int(os.getenv("IDS_SCAN_WINDOW_SEC", "60"))
-SSH_THRESHOLD = 10
-SSH_WINDOW = 300
-COOLDOWN = 60
+from mini_soc_config import get_env, get_int  # noqa: E402
+
+# Config via env (systemd EnvironmentFile) or ids.yaml; defaults match spec
+EVE_FILE = get_env("IDS_OUTPUT", "/var/log/mini_soc_ids.json")
+HOSTNAME = get_env("SOC_HOSTNAME", "fw-01")
+WHITELIST = set(
+    ip.strip() for ip in (get_env("IDS_ALLOWLIST", "") or "").split(",") if ip.strip()
+)
+
+SCAN_PORTS = get_int("IDS_SCAN_THRESHOLD", 15)
+SCAN_WINDOW = get_int("IDS_SCAN_WINDOW_SEC", 60)
+SSH_THRESHOLD = get_int("IDS_SSH_THRESHOLD", 10)
+SSH_WINDOW = get_int("IDS_SSH_WINDOW_SEC", 300)
+COOLDOWN = get_int("IDS_COOLDOWN_SEC", 60)
 
 try:
     LOCAL_IP = socket.gethostbyname(socket.gethostname())
@@ -164,8 +177,26 @@ def monitor_journal():
         sys.exit(0)
 
 
+def has_journal_access():
+    """Return True when journalctl can be read (root or systemd-journal group)."""
+    try:
+        subprocess.run(
+            ["journalctl", "-n", "0", "-o", "cat"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 if __name__ == "__main__":
-    if os.getuid() != 0:
-        print("[ERROR] Run with sudo.")
+    if not has_journal_access():
+        print(
+            "[ERROR] Cannot read the systemd journal. Run as root or add the "
+            "service account to the systemd-journal group."
+        )
         sys.exit(1)
     monitor_journal()

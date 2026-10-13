@@ -1,6 +1,6 @@
-import os 
 from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session
+from mini_soc_config import evidence_dir, get_list
 from .dependencies import require_role 
 from .database import get_db
 from .models.user import User
@@ -18,14 +18,13 @@ app = FastAPI(
     version="1.0.0",
 )
 
-allowed_origins = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173",
-    ).split(",")
-    if origin.strip()
-]
+allowed_origins = get_list(
+    "CORS_ORIGINS",
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,9 +45,8 @@ app.include_router(stats_router)
 
 @app.on_event("startup")
 def ensure_dirs():
-    import os
-    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
-    os.makedirs(evidence_dir, exist_ok=True)
+    path = evidence_dir()
+    path.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/")

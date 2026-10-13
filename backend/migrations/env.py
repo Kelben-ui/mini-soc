@@ -1,6 +1,6 @@
-import os
+import sys
+from pathlib import Path
 
-from dotenv import load_dotenv
 from logging.config import fileConfig
 
 from sqlalchemy import create_engine
@@ -8,18 +8,24 @@ from sqlalchemy import pool
 
 from alembic import context
 
+# Make the repo root importable no matter which directory alembic runs from.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from mini_soc_config import ENV_FILE, get_env  # noqa: E402
+
 from app.database import Base
 from app.models import User
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-load_dotenv(os.path.abspath("../.env"))
 
-database_url = os.getenv("DATABASE_URL")
+database_url = get_env("DATABASE_URL")
 
 if not database_url:
-    raise RuntimeError("DATABASE_URL is not set")
+    raise RuntimeError(
+        f"DATABASE_URL is not set (env file: {ENV_FILE})"
+    )
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

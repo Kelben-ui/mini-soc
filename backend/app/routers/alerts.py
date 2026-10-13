@@ -269,7 +269,7 @@ def export_alert_events_as_evidence(
         event.raw for event in rows
     ) + "\n"
 
-    evidence_dir = "/var/lib/mini-soc/evidence"
+    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
     os.makedirs(evidence_dir, mode=0o700, exist_ok=True)
 
     filename = f"alert-{alert_id}-events-{uuid.uuid4().hex}.log"

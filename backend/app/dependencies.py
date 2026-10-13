@@ -1,12 +1,11 @@
-import os
-
-from dotenv import load_dotenv
 from fastapi import Header
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+
+from mini_soc_config import get_env
 
 from .database import get_db
 from .models.user import User
@@ -68,9 +67,9 @@ def require_role(*allowed_roles):
         return current_user
 
     return role_checker
-load_dotenv(os.path.abspath("../.env"))
 
-INGEST_API_KEY = os.getenv("INGEST_API_KEY")
+
+INGEST_API_KEY = get_env("INGEST_API_KEY")
 
 
 def verify_ingest_api_key(

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 import requests
-import os
+
+from mini_soc_config import evidence_dir, get_env
 
 from collector.parsers.suricata_parser import parse as parse_suricata
 from collector.parsers.nginx_access_parser import parse as parse_nginx_access
@@ -15,9 +16,7 @@ def parse_mini_soc_ids(line):
     return parse_suricata(line, log_type="mini_soc_ids")
 
 
-BACKEND_URL = (
-    f"{os.environ.get('BACKEND_URL', 'http://127.0.0.1:8000')}/api/ingest"
-)
+BACKEND_URL = f"{get_env('BACKEND_URL', 'http://127.0.0.1:8000')}/api/ingest"
 
 PARSERS = {
     "suricata": parse_suricata,
@@ -31,8 +30,7 @@ PARSERS = {
 
 @app.on_event("startup")
 def ensure_dirs():
-    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
-    os.makedirs(evidence_dir, exist_ok=True)
+    evidence_dir().mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/")
@@ -67,7 +65,7 @@ def ingest(data: dict):
             detail="Could not parse log"
         )
 
-    api_key = os.environ.get("INGEST_API_KEY")
+    api_key = get_env("INGEST_API_KEY")
 
     if not api_key:
         raise HTTPException(

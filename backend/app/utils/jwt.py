@@ -1,14 +1,13 @@
-import os
 from datetime import datetime, timedelta, timezone
 
-from dotenv import load_dotenv
 from jose import jwt
 
-load_dotenv(os.path.abspath("../.env"))
+from mini_soc_config import get_env, get_int
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+
+SECRET_KEY = get_env("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = get_int("JWT_EXPIRE_MINUTES", 60)
 
 
 def create_access_token(data: dict) -> str:

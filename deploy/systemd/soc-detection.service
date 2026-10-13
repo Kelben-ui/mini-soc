@@ -1,21 +1,31 @@
-# Legacy loop (detection/run.py). Production uses mini-soc-worker.service
-# (detection/worker.py); do NOT enable both or alerts get processed twice.
 [Unit]
-Description=Mini SOC Detection Engine (loop)
-After=network.target postgresql.service soc-backend.service
+Description=Mini SOC Detection Loop
+Documentation=file:@APP_DIR@/README.md
+After=network-online.target postgresql.service soc-backend.service
+Wants=postgresql.service soc-backend.service
 
 [Service]
-User=mini-soc
-Group=mini-soc
-WorkingDirectory=/opt/mini-soc/detection
-EnvironmentFile=/etc/mini-soc/.env
-ExecStart=/opt/mini-soc/.venv/bin/python run.py
+Type=simple
+User=@SOC_USER@
+Group=@SOC_USER@
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@ENV_FILE@
+ExecStart=@VENV_DIR@/bin/python -m detection.run
 Restart=always
 RestartSec=2
 NoNewPrivileges=yes
+PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/opt/mini-soc /var/lib/mini-soc
-ReadOnlyPaths=/etc/mini-soc
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+UMask=0027
+ReadWritePaths=/var/lib/mini-soc
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
