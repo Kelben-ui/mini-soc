@@ -30,6 +30,8 @@ jobs:
           bash -n deploy/postgres.sh
       - name: Run collector parser tests
         run: pytest -v collector
+      - name: Run log agent tests
+        run: pytest -v agents
       - name: Detection replay (13 rules vs SQLite)
         env:
           DATABASE_URL: sqlite:///./ci-replay.db

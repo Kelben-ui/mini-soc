@@ -59,7 +59,7 @@ fi
 log "Installing OS packages"
 apt-get update -y
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  python3 python3-venv python3-pip git curl ca-certificates openssl nginx sudo
+  python3 python3-venv python3-pip git curl ca-certificates openssl nginx sudo rsyslog
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/^v//; s/\..*//')" -lt 20 ]; then
   log "Installing Node.js 20 (NodeSource)"
@@ -81,9 +81,15 @@ fi
 
 chown -R "$REPO_OWNER:$SOC_USER" "$APP_DIR"
 chmod -R g+rX "$APP_DIR"
-# nginx (www-data) needs to traverse into dist/.
-chmod o+x "$(dirname "$APP_DIR")" 2>/dev/null || true
-chmod o+x "$APP_DIR" 2>/dev/null || true
+# nginx (www-data) needs to traverse into dist/.  Prefer a scoped ACL so we do
+# not make the home directory world-executable; fall back to o+x only if the
+# ACL tooling is unavailable.
+if command -v setfacl >/dev/null 2>&1; then
+  setfacl -m u:www-data:x "$(dirname "$APP_DIR")" "$APP_DIR" 2>/dev/null || true
+else
+  chmod o+x "$(dirname "$APP_DIR")" 2>/dev/null || true
+  chmod o+x "$APP_DIR" 2>/dev/null || true
+fi
 
 # --- State directories ------------------------------------------------------
 log "Creating state directories"
@@ -91,13 +97,41 @@ mkdir -p "$ETC_DIR" "$VAR_DIR" "$EVIDENCE_DIR" "$AGENT_DIR/spool"
 chown -R "$SOC_USER:$SOC_USER" "$VAR_DIR"
 chmod 750 "$VAR_DIR" "$EVIDENCE_DIR"
 
+# The IDS writes this file; the log agent (group $SOC_USER) reads it.
 touch "$IDS_OUTPUT"
-chown "$IDS_USER:$IDS_USER" "$IDS_OUTPUT"
+chown "$IDS_USER:$SOC_USER" "$IDS_OUTPUT"
 chmod 640 "$IDS_OUTPUT"
+
+# --- System logs the agent tails -------------------------------------------
+# rsyslog (not journald) produces /var/log/auth.log and /var/log/kern.log, and
+# nginx writes /var/log/nginx/{access,error}.log.  The agent reads them through
+# the `adm` group (see SupplementaryGroups= in soc-agent.service), so make sure
+# rsyslog is running and every file exists before the service starts.
+log "Ensuring rsyslog and log files"
+systemctl enable --now rsyslog >/dev/null 2>&1 || true
+systemctl restart rsyslog >/dev/null 2>&1 || true
+mkdir -p /var/log/nginx
+touch /var/log/auth.log /var/log/kern.log \
+      /var/log/nginx/access.log /var/log/nginx/error.log
+chgrp adm /var/log/auth.log /var/log/kern.log \
+          /var/log/nginx/access.log /var/log/nginx/error.log 2>/dev/null || true
+chmod 640 /var/log/auth.log /var/log/kern.log \
+          /var/log/nginx/access.log /var/log/nginx/error.log 2>/dev/null || true
 
 if [ ! -f "$ETC_DIR/ids.yaml" ] && [ -f "$APP_DIR/ids/ids.yaml" ]; then
   cp "$APP_DIR/ids/ids.yaml" "$ETC_DIR/ids.yaml"
 fi
+
+# --- Log agent config -------------------------------------------------------
+# /etc/mini-soc/agent.yaml drives the agent (collector URL, files, batching,
+# buffer dir - task 3.1).  Only create it on first install so operator edits
+# survive re-runs.
+if [ ! -f "$ETC_DIR/agent.yaml" ] && [ -f "$APP_DIR/agents/agent.example.yaml" ]; then
+  log "Installing $ETC_DIR/agent.yaml"
+  cp "$APP_DIR/agents/agent.example.yaml" "$ETC_DIR/agent.yaml"
+fi
+chmod 640 "$ETC_DIR/agent.yaml" 2>/dev/null || true
+chown root:"$SOC_USER" "$ETC_DIR/agent.yaml" 2>/dev/null || true
 
 # --- Config file ------------------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then

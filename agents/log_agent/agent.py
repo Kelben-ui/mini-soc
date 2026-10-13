@@ -1,155 +1,163 @@
-"""Log agent: tails log files and forwards raw lines to the collector.
+"""Mini SOC log agent (Phase 3 rewrite).
 
-When the collector/backend is down the agent spools the raw lines to disk
-(AGENT_SPOOL_DIR) and replays them once the collector is reachable again,
-so no log data is lost during a backend outage.
+Reads its configuration from ``/etc/mini-soc/agent.yaml`` and:
+
+* tails the configured log files, remembering ``(inode, offset)`` in
+  ``state.json`` so a restart never loses or duplicates a line (3.2);
+* handles rotation and truncation by draining the old file then reading the
+  new one from 0 (3.3);
+* batches lines per source (N lines or T seconds) and sends **one** POST per
+  batch to the collector (3.4);
+* spools failed batches to disk and replays them FIFO with exponential
+  backoff (3.5);
+* streams the kernel firewall log via
+  ``journalctl -k -f -o short-iso --cursor-file`` (3.6);
+* sends a heartbeat (with IDS service status) every 30 s (3.7).
 
 Run as a module so the repo root is importable::
 
     python -m agents.log_agent.agent
-
-Watched sources (log_type):
-    /var/log/nginx/access.log       nginx_access
-    /var/log/nginx/error.log        nginx_error
-    /var/log/auth.log               auth
-    /var/log/mini_soc_ids.json      mini_soc_ids
-    /var/log/kern.log               firewall
 """
 
+from __future__ import annotations
+
 import os
+import signal
 import threading
-import time
 
-import requests
-
-from mini_soc_config import get_env, spool_dir
-
-
-COLLECTOR_URL = get_env("COLLECTOR_URL", "http://127.0.0.1:9000/ingest")
-SPOOL_DIR = str(spool_dir())
-
-LOG_FILES = {
-    "/var/log/nginx/access.log": "nginx_access",
-    "/var/log/nginx/error.log": "nginx_error",
-    "/var/log/auth.log": "auth",
-    "/var/log/mini_soc_ids.json": "mini_soc_ids",
-    "/var/log/kern.log": "firewall",
-}
+from .config import AgentConfig, load_config
+from .heartbeat import Heartbeat, heartbeat_worker
+from .offsets import OffsetStore
+from .sender import Batcher, Sender, Spooler, spool_worker
+from .tailer import FileTailer, JournalTailer, file_worker, journal_worker
 
 
-def spool_path(log_type):
-    return f"{SPOOL_DIR}/{log_type}.spool"
+def build_components(config: AgentConfig):
+    """Construct the runtime objects (kept separate so tests can reuse them)."""
+    os.makedirs(config.buffer_dir, exist_ok=True)
+    os.makedirs(config.spool_dir, exist_ok=True)
 
-
-def queue_line(log_type, line):
-    """Buffer a raw line that could not be delivered."""
-    try:
-        os.makedirs(SPOOL_DIR, exist_ok=True)
-
-        with open(spool_path(log_type), "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-
-    except OSError as exc:
-        print(f"[agent] could not buffer {log_type} line: {exc}")
-
-
-def send_line(log_type, line):
-    response = requests.post(
-        COLLECTOR_URL,
-        json={"log_type": log_type, "raw": line},
-        timeout=5
+    store = OffsetStore(config.state_file)
+    spooler = Spooler(config.spool_file)
+    sender = Sender(
+        collector_url=config.collector_url,
+        host=config.host,
+        api_key=config.api_key,
+        spooler=spooler,
     )
-    return response.status_code < 500
+    batcher = Batcher(
+        sender=sender,
+        max_lines=config.batch_max_lines,
+        max_seconds=config.batch_max_seconds,
+    )
+    heartbeat = Heartbeat(
+        url=config.heartbeat_url,
+        name=config.name,
+        host=config.host,
+        api_key=config.api_key,
+        ids_service=config.ids_service,
+        seconds=config.heartbeat_seconds,
+    )
+
+    return store, sender, batcher, heartbeat
 
 
-def drain_spool(log_type):
-    """Replay spooled lines, keeping only the ones still failing."""
-    path = spool_path(log_type)
+def run(config: AgentConfig, stop_event: threading.Event | None = None) -> None:
+    stop_event = stop_event or threading.Event()
+    store, sender, batcher, heartbeat = build_components(config)
 
-    if not os.path.exists(path):
-        return
+    def on_line(log_type: str, line: str) -> None:
+        batcher.add(log_type, line)
 
-    with open(path, "r", encoding="utf-8") as f:
-        lines = [ln.rstrip("\n") for ln in f if ln.strip()]
+    threads: list[threading.Thread] = []
 
-    kept = []
-
-    for line in lines:
-        try:
-            ok = send_line(log_type, line)
-        except Exception:
-            ok = False
-
-        print(f"{log_type} spool replay: {'ok' if ok else 'kept'} {line[:80]}")
-
-        if not ok:
-            kept.append(line)
-
-    if kept:
-        with open(path, "w", encoding="utf-8") as f:
-            for line in kept:
-                f.write(line + "\n")
-    else:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-
-
-def watch_log(log_file, log_type):
-    f = None
-
-    while f is None:
-        try:
-            f = open(log_file, "r", encoding="utf-8", errors="replace")
-        except FileNotFoundError:
-            print(f"[agent] {log_file} not found yet; waiting...")
-            time.sleep(5)
-
-    f.seek(0, 2)
-
-    while True:
-        line = f.readline()
-
-        if not line:
-            time.sleep(1)
-            continue
-
-        line = line.strip()
-
-        if not line:
-            continue
-
-        try:
-            ok = send_line(log_type, line)
-        except Exception as exc:
-            print(f"{log_type} send error: {exc}")
-            ok = False
-
-        if ok:
-            print(f"{log_type} sent ok")
-            drain_spool(log_type)
-        else:
-            print(f"{log_type} backend down; buffering line")
-            queue_line(log_type, line)
-
-
-def main():
-    os.makedirs(SPOOL_DIR, exist_ok=True)
-
-    threads = []
-
-    for log_file, log_type in LOG_FILES.items():
-        thread = threading.Thread(
-            target=watch_log,
-            args=(log_file, log_type),
-            daemon=True
+    for source in config.files:
+        tailer = FileTailer(
+            path=source.path,
+            log_type=source.log_type,
+            store=store,
+            poll_seconds=config.poll_seconds,
         )
-        thread.start()
+        thread = threading.Thread(
+            target=file_worker,
+            args=(tailer, on_line, stop_event),
+            name=f"file:{source.log_type}",
+            daemon=True,
+        )
         threads.append(thread)
 
-    while True:
-        time.sleep(60)
+    for source in config.journal:
+        tailer = JournalTailer(
+            log_type=source.log_type,
+            cursor_file=source.cursor_file,
+            args=source.args,
+        )
+        thread = threading.Thread(
+            target=journal_worker,
+            args=(tailer, on_line, stop_event),
+            name=f"journal:{source.log_type}",
+            daemon=True,
+        )
+        threads.append(thread)
+
+    threads.append(
+        threading.Thread(
+            target=batcher.worker,
+            args=(stop_event,),
+            name="batcher",
+            daemon=True,
+        )
+    )
+    threads.append(
+        threading.Thread(
+            target=spool_worker,
+            args=(sender, stop_event),
+            name="spool",
+            daemon=True,
+        )
+    )
+    threads.append(
+        threading.Thread(
+            target=heartbeat_worker,
+            args=(heartbeat, stop_event),
+            name="heartbeat",
+            daemon=True,
+        )
+    )
+
+    for thread in threads:
+        thread.start()
+
+    stop_event.wait()
+
+    # Final flush so lines buffered at shutdown are still delivered.
+    batcher.flush()
+
+
+def install_signal_handlers(stop_event: threading.Event) -> None:
+    def handler(signum, frame):  # pragma: no cover - signal plumbing
+        stop_event.set()
+
+    for name in ("SIGTERM", "SIGINT"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            try:
+                signal.signal(sig, handler)
+            except ValueError:
+                pass
+
+
+def main() -> None:
+    config = load_config()
+    stop_event = threading.Event()
+    install_signal_handlers(stop_event)
+
+    print(
+        f"[agent] starting as {config.name} -> {config.collector_url} "
+        f"({len(config.files)} file sources, {len(config.journal)} journal sources)"
+    )
+
+    run(config, stop_event)
 
 
 if __name__ == "__main__":

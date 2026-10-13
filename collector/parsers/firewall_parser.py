@@ -6,8 +6,12 @@ Format (rsyslog kern.log):
     MAC=... SRC=203.0.113.5 DST=172.31.13.199 ... PROTO=TCP SPT=34567
     DPT=443 SYN URGP=0
 
-Also accepts journald ``-o cat`` style lines that carry no timestamp
-(SOC_DROP: IN=...), which then default to the current UTC time.
+Also accepts the two journald forms:
+
+* ``journalctl -o short-iso`` (the log agent's firewall source, task 3.6):
+  ``2026-10-13T09:11:02+0000 host kernel: SOC_DROP: IN=...``
+* ``journalctl -o cat``, which carries no timestamp
+  (SOC_DROP: IN=...), which then defaults to the current UTC time.
 
 Prefix -> action mapping: SOC_DROP -> drop, SOC_ACCEPT -> accept,
 SOC_OUT -> out (kept out of ``unusual_outbound`` so every outbound flow
@@ -28,6 +32,14 @@ LINE_PATTERN = re.compile(
     r'(?P<payload>.*)$'
 )
 
+# journalctl -o short-iso: 2026-10-13T09:11:02+0000 host kernel: SOC_DROP: ...
+ISO_PATTERN = re.compile(
+    r'^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}) '
+    r'(?P<kernel_host>\S+) kernel: '
+    r'(?P<prefix>SOC_DROP|SOC_ACCEPT|SOC_OUT): '
+    r'(?P<payload>.*)$'
+)
+
 NO_TS_PATTERN = re.compile(
     r'^(?P<prefix>SOC_DROP|SOC_ACCEPT|SOC_OUT): '
     r'(?P<payload>.*)$'
@@ -40,6 +52,17 @@ ACTIONS = {
     "SOC_ACCEPT": "accept",
     "SOC_OUT": "out",
 }
+
+
+def _parse_iso_timestamp(timestamp):
+    """Parse ``2026-10-13T09:11:02+0000`` (short-iso) to an aware UTC dt."""
+    # ``datetime.fromisoformat`` expects ``+HH:MM`` before Python 3.11, so
+    # insert the missing colon when journalctl emits the compact offset.
+    if re.search(r"[+-]\d{4}$", timestamp):
+        timestamp = f"{timestamp[:-2]}:{timestamp[-2:]}"
+
+    return datetime.fromisoformat(timestamp).astimezone(timezone.utc)
+
 
 
 def _parse_fields(payload):
@@ -67,7 +90,11 @@ def _parse_fields(payload):
 def parse(line):
     line = line.strip()
 
-    match = LINE_PATTERN.match(line) or NO_TS_PATTERN.match(line)
+    match = (
+        LINE_PATTERN.match(line)
+        or ISO_PATTERN.match(line)
+        or NO_TS_PATTERN.match(line)
+    )
 
     if not match:
         return None
@@ -80,14 +107,18 @@ def parse(line):
         return None
 
     if data.get("timestamp"):
+        timestamp = data["timestamp"]
+
         try:
-            ts_dt = datetime.strptime(
-                f"{datetime.now(timezone.utc).year} {data['timestamp']}",
-                "%Y %b %d %H:%M:%S",
-            )
+            if "T" in timestamp:
+                ts_dt = _parse_iso_timestamp(timestamp)
+            else:
+                ts_dt = datetime.strptime(
+                    f"{datetime.now(timezone.utc).year} {timestamp}",
+                    "%Y %b %d %H:%M:%S",
+                ).replace(tzinfo=timezone.utc)
         except ValueError:
             return None
-        ts_dt = ts_dt.replace(tzinfo=timezone.utc)
     else:
         ts_dt = datetime.now(timezone.utc)
 

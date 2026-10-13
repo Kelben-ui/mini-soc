@@ -48,6 +48,56 @@ export default function Overview() {
         </div>
       </div>
 
+      {/* Agent + IDS health (task 3.7) */}
+      <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 shadow space-y-4">
+        <h2 className="text-lg font-semibold text-gray-200 border-b border-gray-700 pb-2">
+          Agent &amp; IDS Health
+        </h2>
+
+        <div className="flex flex-wrap gap-4">
+          <span
+            className={`px-3 py-1 rounded text-sm font-semibold ${
+              stats.ids_status === 'active'
+                ? 'bg-green-900 text-green-300'
+                : 'bg-red-900 text-red-300'
+            }`}
+          >
+            IDS: {stats.ids_status || 'unknown'}
+          </span>
+
+          <span className="px-3 py-1 rounded text-sm font-semibold bg-gray-900 text-gray-300">
+            Agents online: {stats.agents_online ?? 0} / {(stats.agents || []).length}
+          </span>
+        </div>
+
+        {(stats.agents || []).length === 0 ? (
+          <p className="text-sm text-gray-400">No agent has reported a heartbeat yet.</p>
+        ) : (
+          <ul className="space-y-1">
+            {stats.agents.map((agent) => (
+              <li
+                key={agent.name}
+                className="flex justify-between text-sm bg-gray-900 p-2 rounded"
+              >
+                <span>
+                  <span className={agent.status === 'online' ? 'text-green-400' : 'text-red-400'}>
+                    ●
+                  </span>{' '}
+                  {agent.name}
+                  {agent.host ? ` (${agent.host})` : ''}
+                </span>
+                <span className="text-gray-400">
+                  IDS: {agent.ids_status || 'n/a'}
+                  {agent.last_heartbeat
+                    ? ` · ${new Date(agent.last_heartbeat).toLocaleTimeString()}`
+                    : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Detailed Breakdown Grids */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Alerts Breakdown */}

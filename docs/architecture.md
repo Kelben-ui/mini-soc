@@ -80,6 +80,39 @@ Notes:
   (`/var/lib/mini-soc/detection_checkpoint.json`) so alerts appear within a few
   seconds of a new event.
 
+### 3.1 Log agent (Phase 3 rewrite, spec §4.1)
+
+`agents/log_agent/` is config-driven: everything the agent does is read from
+`/etc/mini-soc/agent.yaml` (rendered from `agents/agent.example.yaml` by
+`install.sh`) - collector URL, API key, host, heartbeat, batch sizes, buffer
+dir and the source list.  Behaviour:
+
+- **Offsets (3.2)** — `(path, inode)` byte offsets persist in
+  `/var/lib/mini-soc/agent/state.json` (atomic writes); a restart resumes
+  exactly where it stopped, so nothing is lost or duplicated.
+- **Rotation/truncation (3.3)** — on an inode change the old file is drained
+  to EOF before the new file is opened at byte 0; a same-inode truncation is
+  re-read from 0.
+- **Batching (3.4)** — lines are grouped per source and **one** POST
+  `{host, log_type, lines: [...]}` is sent per batch (N lines or T seconds).
+  The collector accepts both the batched shape and the legacy single-line one,
+  and verifies the agent's `X-API-Key` header against `INGEST_API_KEY`.
+- **Spool (3.5)** — failed batches are appended to `agent/spool/batches.jsonl`
+  and replayed FIFO with exponential backoff (1 s → 60 s), so a 2-minute
+  collector outage loses nothing.
+- **Sources (3.6)** — file sources (nginx access/error, auth.log, IDS output)
+  plus a journald source for the firewall log:
+  `journalctl -k -f -o short-iso --cursor-file` (the journald cursor is the
+  offset).  The firewall parser accepts rsyslog, `-o cat` and `-o short-iso`
+  forms.
+- **Heartbeat (3.7)** — every 30 s the agent POSTs `/api/agents/heartbeat`
+  (API-key auth) with the IDS service status; `/api/stats` exposes agent and
+  IDS health, which the Overview page renders.
+- **Least privilege (3.8)** — runs as `mini-soc` (never root) with
+  `SupplementaryGroups=adm mini-soc-ids systemd-journal`; the journal source
+  needs the journal group, while log files and the IDS output need `adm` and
+  `mini-soc-ids` respectively.
+
 ## 4. Deployment architecture (AWS EC2)
 
 The canonical layout (created by `deploy/install.sh`):
@@ -89,7 +122,8 @@ The canonical layout (created by `deploy/install.sh`):
 | Code | `/home/ubuntu/mini-soc` |
 | Venv | `/home/ubuntu/mini-soc/.venv` |
 | Config | `/etc/mini-soc/.env` (0640, `root:mini-soc`) |
-| State | `/var/lib/mini-soc/{evidence,agent/spool}` |
+| Agent config | `/etc/mini-soc/agent.yaml` (0640, `root:mini-soc`) |
+| State | `/var/lib/mini-soc/{evidence,agent/spool}` + `agent/state.json` |
 | Logs | journald (`journalctl -u soc-backend -f`) |
 | Database | PostgreSQL 16 on `localhost:5432` |
 | Units | `soc-backend`, `soc-collector`, `soc-detection`, `soc-agent`, `mini-soc-ids` |

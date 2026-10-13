@@ -1,2 +1,5 @@
+# Log agent runtime deps (superset of the root requirements.txt the
+# deployment actually installs; kept here for isolated agent installs).
 requests==2.31.0
 urllib3<2.0
+PyYAML==6.0.1

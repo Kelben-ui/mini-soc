@@ -8,6 +8,12 @@ Wants=soc-collector.service
 Type=simple
 User=@SOC_USER@
 Group=@SOC_USER@
+# The agent tails /var/log/{auth,kern,nginx/*}.log (root:adm 0640) and the IDS
+# output /var/log/mini_soc_ids.json (mini-soc-ids:mini-soc 0640), so it needs the
+# adm and mini-soc-ids supplementary groups to read them.  The firewall source
+# reads the kernel journal via `journalctl -k`, which requires the
+# systemd-journal group.  It never runs as root (task 3.8).
+SupplementaryGroups=adm mini-soc-ids systemd-journal
 WorkingDirectory=@APP_DIR@
 EnvironmentFile=@ENV_FILE@
 ExecStart=@VENV_DIR@/bin/python -m agents.log_agent.agent

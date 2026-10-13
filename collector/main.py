@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 import requests
 
 from mini_soc_config import evidence_dir, get_env
@@ -38,31 +38,94 @@ def health():
     return {"status": "collector running"}
 
 
-@app.post("/ingest")
-def ingest(data: dict):
-    log_type = data.get("log_type")
-    raw = data.get("raw")
+def verify_agent_key(x_api_key):
+    """Authenticate the log agent (task 3.1/3.4).
 
-    if not log_type or not raw:
+    The agent presents the ingest key as ``X-API-Key``.  When no key is
+    configured (local development) authentication is skipped.
+    """
+    expected = get_env("INGEST_API_KEY")
+
+    if not expected:
+        return
+
+    if x_api_key != expected:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key",
+        )
+
+
+def _extract_lines(data):
+    """Normalize both the batched and the legacy single-line request shapes.
+
+    Batched (agent, task 3.4)::
+
+        {"host": "...", "log_type": "auth", "lines": ["raw", ...]}
+
+    Legacy (single line)::
+
+        {"log_type": "auth", "raw": "raw"}
+    """
+    log_type = data.get("log_type")
+
+    if not log_type:
         raise HTTPException(
             status_code=400,
-            detail="log_type and raw are required"
+            detail="log_type is required",
         )
+
+    if "lines" in data:
+        lines = data.get("lines")
+
+        if not isinstance(lines, list):
+            raise HTTPException(
+                status_code=400,
+                detail="lines must be a list",
+            )
+
+        return log_type, lines
+
+    raw = data.get("raw")
+
+    if not raw:
+        raise HTTPException(
+            status_code=400,
+            detail="log_type and raw are required",
+        )
+
+    return log_type, [raw]
+
+
+@app.post("/ingest")
+def ingest(data: dict, x_api_key: str | None = Header(default=None)):
+    verify_agent_key(x_api_key)
+
+    log_type, lines = _extract_lines(data)
 
     parser = PARSERS.get(log_type)
 
     if parser is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported log_type: {log_type}"
+            detail=f"Unsupported log_type: {log_type}",
         )
 
-    event = parser(raw)
+    events = []
 
-    if event is None:
+    for line in lines:
+        if not isinstance(line, str) or not line.strip():
+            continue
+
+        event = parser(line)
+
+        if event is not None:
+            events.append(event)
+
+    if not events:
         raise HTTPException(
             status_code=422,
-            detail="Could not parse log"
+            detail="Could not parse log",
         )
 
     api_key = get_env("INGEST_API_KEY")
@@ -70,37 +133,39 @@ def ingest(data: dict):
     if not api_key:
         raise HTTPException(
             status_code=500,
-            detail="INGEST_API_KEY is not configured"
+            detail="INGEST_API_KEY is not configured",
         )
 
     headers = {
         "X-API-Key": api_key,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Backend unreachable/timeout or a backend 5xx -> 503 so the log agent
-    # knows to buffer the line and retry (contract: collector returns 503
-    # when the backend is down; the agent then buffers).
+    # knows to spool the batch and retry (contract: collector returns 503
+    # when the backend is down; the agent then buffers).  A batch is forwarded
+    # to the backend in a single POST.
     try:
         response = requests.post(
             BACKEND_URL,
             headers=headers,
-            json={"events": [event]},
-            timeout=10
+            json={"events": events},
+            timeout=10,
         )
     except requests.RequestException:
         raise HTTPException(
             status_code=503,
-            detail="backend unreachable; event not forwarded"
+            detail="backend unreachable; events not forwarded",
         )
 
     if response.status_code >= 500:
         raise HTTPException(
             status_code=503,
-            detail=f"backend error (HTTP {response.status_code})"
+            detail=f"backend error (HTTP {response.status_code})",
         )
 
     return {
         "backend_status": response.status_code,
-        "backend_response": response.text
+        "backend_response": response.text,
+        "accepted": len(events),
     }

@@ -27,6 +27,13 @@ SOC_DROP_NO_TS = (
     "WINDOW=64240 RES=0x00 SYN URGP=0"
 )
 
+# journald `-o short-iso` line (the log agent's firewall source, task 3.6).
+SOC_DROP_SHORT_ISO = (
+    "2026-10-13T09:11:02+0000 ip-172-31-13-199 kernel: SOC_DROP: IN=eth0 OUT= "
+    "SRC=203.0.113.5 DST=172.31.13.199 LEN=60 TOS=0x00 PREC=0x00 TTL=117 "
+    "ID=57626 DF PROTO=TCP SPT=34567 DPT=443 WINDOW=64240 RES=0x00 SYN URGP=0"
+)
+
 
 def test_drop_is_normalized():
     result = parse(SOC_DROP)
@@ -70,6 +77,17 @@ def test_journald_cat_line_without_timestamp_parses():
     assert result["action"] == "drop"
     assert result["dst_ip"] == "172.31.13.199"
     assert result["timestamp"].endswith("Z")
+
+
+def test_journald_short_iso_line_parses():
+    result = parse(SOC_DROP_SHORT_ISO)
+
+    assert result is not None
+    assert result["action"] == "drop"
+    assert result["src_ip"] == "203.0.113.5"
+    assert result["src_port"] == 34567
+    assert result["dst_port"] == 443
+    assert result["timestamp"] == "2026-10-13T09:11:02Z"
 
 
 def test_malformed_lines_return_none():

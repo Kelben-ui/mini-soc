@@ -967,6 +967,72 @@ Changes must be recorded in the audit log.
 
 ------------------------------------------------------------------------
 
+## 13.5 Log agent batch ingestion (collector)
+
+The log agent POSTs each source batch to the collector `/ingest` (**one POST
+per batch**; task 3.4):
+
+``` http
+POST <collector>/ingest
+```
+
+Body:
+
+``` json
+{
+  "host": "ec2-host",
+  "log_type": "auth",
+  "lines": ["raw line 1", "raw line 2"]
+}
+```
+
+Behaviour:
+
+- The collector authenticates the agent with the `X-API-Key` header (the
+  ingest API key; skipped when the key is unset for local development).
+- The legacy single-line shape `{"log_type": ..., "raw": ...}` remains
+  accepted.
+- The collector parses every line and forwards the normalized events to the
+  backend `/api/ingest` in a single POST.
+- Backend unreachable / timeout / 5xx -> the collector answers `503`; the
+  agent spools the batch to disk and replays it FIFO with backoff (task 3.5).
+
+------------------------------------------------------------------------
+
+## 13.6 Agent heartbeat
+
+``` http
+POST /api/agents/heartbeat
+```
+
+Purpose:
+
+Allow the log agent to report itself (and the IDS service) as healthy
+(task 3.7).
+
+Authentication:
+
+``` text
+API key
+```
+
+Body:
+
+``` json
+{
+  "name": "log-agent",
+  "host": "ec2-host",
+  "status": "online",
+  "ids": {"service": "mini-soc-ids", "status": "active"}
+}
+```
+
+The backend upserts the agent row and refreshes `last_heartbeat`.
+`GET /api/stats` returns `agents` (name, host, status, last_heartbeat,
+ids_status), `agents_online` and `ids_status` for the Overview health panel.
+
+------------------------------------------------------------------------
+
 # 14. Incident API
 
 ## 14.1 Create an incident
@@ -1093,7 +1159,11 @@ The dashboard overview must be able to show information including:
 -   top source IPs
 -   top attack types
 -   open incidents
--   agent status
+-   agent status (reported via `POST /api/agents/heartbeat`)
+
+The response includes `agents` (name, host, status, last_heartbeat,
+ids_status), `agents_online` and `ids_status` so the Overview can render the
+agent and IDS health panel.
 
 ------------------------------------------------------------------------
 

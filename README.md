@@ -55,11 +55,22 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
   The backend mounts every route under `/api/...`, so the proxy is
   `proxy_pass http://127.0.0.1:8000;` with **no** trailing slash (a trailing
   slash would strip `/api` and 404).
-- **Log agent (Phase 1.8)** — tails `{nginx access.log, nginx error.log,
-  auth.log, mini_soc_ids.json, kern.log}` and forwards raw lines to the
-  collector. When the backend is down the collector answers `503` and the agent
-  spools lines to `AGENT_SPOOL_DIR` (`/var/lib/mini-soc/agent/spool`), replaying
-  once the collector is reachable.
+- **Log agent (Phase 1.8 → Phase 3 rewrite)** — reads `/etc/mini-soc/agent.yaml`
+  (installed from `agents/agent.example.yaml`); nothing is hard-coded in the
+  agent. It tails `{nginx access.log, nginx error.log, auth.log,
+  mini_soc_ids.json}` with `(path, inode)` offsets in
+  `/var/lib/mini-soc/agent/state.json` (restart never loses or duplicates a
+  line), handles rotation/truncation, and streams the kernel firewall log via
+  `journalctl -k -f -o short-iso --cursor-file`. Lines are batched per source
+  (N lines or T seconds) into one `{host, log_type, lines}` POST to the
+  collector, which verifies the `X-API-Key` header. When the collector/backend
+  is down batches are spooled to `/var/lib/mini-soc/agent/spool/` and replayed
+  FIFO with exponential backoff. Every 30 s the agent POSTs a heartbeat to
+  `/api/agents/heartbeat` including the IDS service status. `install.sh`
+  installs/enables **rsyslog** (so `auth.log`/`kern.log` are produced), installs
+  `agent.yaml`, and gives the agent the `adm`, `mini-soc-ids` and
+  `systemd-journal` supplementary groups so it can read those files, the IDS
+  output and the kernel journal - never as root.
 - **Security Group** — restrict the dashboard (443 and the 80 redirect) and SSH
   to the analyst IP; do not expose `5173`/`4173`. See Phase 0.3.
 - **Local development** — copy `.env.example` to `.env`, run the backend
@@ -90,8 +101,10 @@ IDS, multi-VM → one EC2) were agreed with the supervisor in week 1; see
 - Code: `/home/ubuntu/mini-soc/`
 - Venv: `/home/ubuntu/mini-soc/.venv/`
 - Config: `/etc/mini-soc/.env` (0640)
+- Agent config: `/etc/mini-soc/agent.yaml` (0640)
 - Evidence: `/var/lib/mini-soc/evidence/`
 - Agent spool: `/var/lib/mini-soc/agent/spool/`
+- Agent offsets: `/var/lib/mini-soc/agent/state.json`
 - Detection checkpoint: `/var/lib/mini-soc/detection_checkpoint.json`
 - Logs: journald (`journalctl -u soc-detection -f`)
 - IDS output: `/var/log/mini_soc_ids.json`
