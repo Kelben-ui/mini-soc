@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { getAlert } from "../api/alerts";
 import { PLAYBOOK_MAP } from "../playbookMap";
-import SeverityBanner from "../components/SeverityBanner";
+
 
 export default function AlertDetail() {
   const { id } = useParams();
@@ -34,7 +34,6 @@ export default function AlertDetail() {
 
   return (
     <div>
-      <SeverityBanner alerts={[alert]} />
       <h1 className="page-title">Alert Detail: {alert.title}</h1>
       <div className="card">
         <p><strong>Rule:</strong> {alert.rule_id}</p>

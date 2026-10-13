@@ -12,7 +12,7 @@ export default function Overview() {
         const response = await client.get('/api/stats');
         setStats(response.data);
       } catch (err) {
-        console.h('Failed to fetch SOC stats:', err);
+        console.error('Failed to fetch SOC stats:', err);
         setError('Failed to load dashboard metrics.');
       } finally {
         setLoading(false);

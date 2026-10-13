@@ -89,7 +89,11 @@ export default function IncidentsList() {
                 const id = incident.id || incident.incident_id;
                 return (
                   <tr key={id} className="hover:bg-gray-750 transition">
-                    <td className="p-4 font-mono text-xs text-gray-400">{id}</td>
+                    <td className="p-4 font-mono text-xs text-gray-400">
+                      <Link to={`/incidents/${id}`} className="hover:underline text-blue-400">
+                      {id}
+                      </Link>
+                      </td>
                     <td className="p-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded uppercase ${
                         incident.severity === 'high' || incident.severity === 'critical' 
