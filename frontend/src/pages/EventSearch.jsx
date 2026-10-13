@@ -10,7 +10,7 @@ export default function EventSearch() {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await client.get(`/api/events?q=${encodeURIComponent(query)}`);
+      const response = await client.get(`/api/events?src_ip=${encodeURIComponent(query)}`);
       setEvents(Array.isArray(response.data) ? response.data : response.data.events || []);
     } catch (err) {
       console.error('Failed to search events:', err);

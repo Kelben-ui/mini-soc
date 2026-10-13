@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import client from '../api/client';
-
+import { canCloseIncident } from '../api/auth';
 export default function IncidentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -71,6 +71,7 @@ export default function IncidentDetail() {
         <div className="border-t border-gray-700 pt-4 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-gray-400 uppercase mb-1">Update Status</h3>
+            {canCloseIncident() && (
             <form onSubmit={handleUpdateStatus} className="flex space-x-3">
               <select 
                 value={status} 
@@ -79,6 +80,7 @@ export default function IncidentDetail() {
               >
                 <option value="open">Open</option>
                 <option value="investigating">Investigating</option>
+                <option value="contained">Contained</option>
                 <option value="resolved">Resolved</option>
                 <option value="closed">Closed</option>
               </select>
@@ -86,6 +88,7 @@ export default function IncidentDetail() {
                 Save
               </button>
             </form>
+            )}
           </div>
         </div>
       </div>
