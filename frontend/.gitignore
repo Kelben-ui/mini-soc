@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Generated at dev/build time from ../../playbooks by scripts/sync-playbooks.mjs.
+public/playbooks/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "sync-playbooks": "node scripts/sync-playbooks.mjs",
+    "predev": "npm run sync-playbooks",
     "dev": "vite",
+    "prebuild": "npm run sync-playbooks",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
