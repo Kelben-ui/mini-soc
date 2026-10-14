@@ -1,58 +1,197 @@
-# Mini SOC User Guide
+# Mini SOC — Analyst User Guide
 
-## Start the backend
+This guide is for **analysts using the dashboard**: triaging alerts,
+investigating attack chains, running incidents and taking response actions.
 
-    cd ~/mini-soc/backend
-    ../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+- **URL:** `https://<instance>/` (analyst access is restricted to the analyst
+  IP by the AWS Security Group; see [`lab-setup.md`](lab-setup.md)).
+- **Sign-in:** username + password, exchanged for a JWT stored in the browser.
+- **Companion reading:** the response procedures live in
+  [`../playbooks/incident-response.md`](../playbooks/incident-response.md);
+  the data model is in [`contracts.md`](contracts.md).
 
-Keep the terminal open when running the command in the foreground.
+> The screenshots below were captured with the Playwright tooling in
+> [`testing/screenshots/`](testing/screenshots/) against a locally-seeded demo
+> database (`seed_demo.py`), so the data is synthetic. The layout and behaviour
+> are identical to the deployed dashboard.
 
-Check the backend from another terminal:
+---
 
-    curl -i http://127.0.0.1:8000/
+## 1. Signing in
 
-A healthy backend returns HTTP 200.
+![Login page](images/screenshots/00-login.png)
 
-## Check the collector
+Enter your username and password and select **Log in**. Your **role**
+(`analyst`, `lead` or `admin`) is read from the token and controls which
+actions are offered — leads/admins can change alert status, close incidents and
+export evidence; analysts can investigate and record actions.
 
-    curl -i http://127.0.0.1:9000/
+## 2. SOC Overview
 
-The collector should return HTTP 200 when running.
+![SOC Overview](images/screenshots/01-overview.png)
 
-## API documentation
+The landing page gives the current posture:
 
-With the backend running, open:
+- the **threat-level banner** — the overall level and the open counts by
+  severity (CRITICAL/HIGH/MEDIUM/LOW);
+- recent alert activity and the top sources;
+- **agent heartbeats** — any log agent that has stopped reporting shows here
+  ("No agent heartbeats received" until the first beacon).
 
-http://127.0.0.1:8000/docs
+If it says "No alert data yet", the collector/detection services are not feeding
+events — check the services (Section 12).
 
-Use the interactive API documentation to review endpoints and perform
-authorized tests.
+## 3. Alerts
 
-## Start the frontend
+### 3.1 The alert list
 
-    cd ~/mini-soc/frontend
-    npm run dev
+![Alerts list](images/screenshots/02-alerts.png)
 
-Open the local address printed by Vite. Confirm that the frontend API
-configuration points to the intended backend address.
+Filter by **severity**, **status**, **Rule ID** (e.g. `SSH-BF-001`) and
+**Source IP**. Each row shows the title, severity, status, source IP and last
+seen time. Select a row to open the alert.
 
-## Check processes and logs
+### 3.2 Alert detail
 
-    ps -eo pid,args | grep -E '[u]vicorn|[l]og_agent/agent.py'
-    tail -n 30 /tmp/log_agent.log
-    tail -n 30 /tmp/mini-soc-backend.log
+![Alert detail](images/screenshots/03-alert-detail.png)
 
-The collector log location depends on how it was started.
+The detail view is the analyst's workspace for one alert:
 
-## Troubleshooting
+- **Header fields** — rule ID, severity, status, source/destination, `count`,
+  MITRE technique and category.
+- **Linked raw events** — every normalized event that matched the rule
+  (timestamp, host, log type, src/dst, user, outcome). This is the evidence the
+  detection engine actually saw.
+- **Change alert status** — move the alert through its lifecycle (see below).
+- **Assign** — assign the alert to an analyst.
+- **Export evidence** — download the linked raw events as an evidence file
+  (recorded with a SHA-256 hash and chain of custody).
+- **Promote to incident** — turn this alert (or its whole chain) into an
+  incident for full investigation.
+- **Response playbook** — the mapped procedure for this rule, loaded from
+  [`../playbooks/incident-response.md`](../playbooks/incident-response.md).
 
-- If port 8000 is unavailable, inspect the backend process and its log.
-- If port 9000 is unavailable, inspect the collector process and its log.
-- If ingestion fails, check the collector's backend URL and API key.
-- If database operations fail, check PostgreSQL and the root `.env`
-  configuration without printing secrets.
-- Check running processes before starting another agent instance.
-- Review migration history before changing the database schema.
+**Alert lifecycle**
 
-Only monitor systems you own or are authorized to test. Do not share secrets,
-private keys, or unredacted sensitive logs.
+```
+NEW ──► INVESTIGATING ──► CONTAINED ──► RESOLVED
+  └──► FALSE POSITIVE        (also allowed from NEW / INVESTIGATING; reason required)
+```
+
+## 4. Attack chains
+
+When alerts from one source span **two or more categories** within 30 minutes
+(e.g. port scan → web attack → SSH brute force) the detection engine correlates
+them into a **chain**.
+
+- **Chains list** (`Attack Chains`) shows chain, alert count, overall severity,
+  categories, source IPs and whether it is already attached to an incident.
+
+![Attack chains](images/screenshots/04-chains.png)
+
+- **Chain detail** shows the alerts in time order as a kill-chain timeline and
+  lets you **promote the whole chain to one incident** in a single click.
+
+![Chain detail](images/screenshots/05-chain-detail.png)
+
+## 5. Incidents
+
+### 4.1 Incident list
+
+![Security incidents](images/screenshots/06-incidents.png)
+
+All incidents with severity, title, status and available actions.
+
+### 4.2 Incident detail
+
+![Incident detail](images/screenshots/07-incident-detail.png)
+
+The incident is the container for the investigation:
+
+- **Timeline** — an automatic, chronological merge of status changes, notes,
+  evidence and response actions.
+- **Notes** — add free-text investigation notes.
+- **Evidence** — upload files (with hash + custody log) and view the custody
+  trail.
+- **Response actions** — record an action (target + reason), then **confirm it**
+  to execute. See Section 10 for `block IP`.
+- **Status** — move the incident through `open → investigating → contained →
+  resolved → closed`. Closing requires a lead/admin; **root cause** and
+  **lessons learned** fields feed the final report.
+- **Report export** — produce the incident report (HTML/CSV) for archiving under
+  `docs/reports/`.
+
+## 5. Events
+
+![Event search](images/screenshots/08-events.png)
+
+The raw normalized event stream. Filter by **source IP**, **host** and **log
+type** (e.g. `auth`, `nginx_access`, `mini_soc_ids`, `firewall`). Use this to
+confirm exactly what the platform received, independent of the alerting layer.
+
+## 6. Detection rules
+
+![Detection rules](images/screenshots/09-rules.png)
+
+Every rule's **severity, category, MITRE technique, tactic, live alert count and
+last-fired time**, plus whether it is enabled. This is the live view of
+[`../rules/`](../rules/); see also [`rules.md`](rules.md).
+
+## 7. Reports
+
+![Reports](images/screenshots/10-reports.png)
+
+Aggregate views over alerts and incidents, with per-incident report export
+(used to produce the archived reports under [`reports/`](reports/)).
+
+## 8. Users (lead/admin)
+
+![Users](images/screenshots/11-users.png)
+
+Create users, set roles and reset passwords. Passwords must meet the minimum
+length. New users are created through the API/dashboard, never by editing the
+database.
+
+## 9. Response actions and containment ("Block IP")
+
+`block IP` is the **only** response action the platform executes itself, and it
+is always human-confirmed:
+
+1. On the incident, add a response action with type **`block IP`**, the bare
+   attacker **IPv4** as the target, and a reason. This *records* the decision.
+2. Select **Confirm / Execute**. The backend runs `soc-block add <ip>` via sudo,
+   adding the address to the nftables **`blocklist`** set with a timeout
+   (default 3600 s). The action's status becomes `executed` (or `failed`).
+3. **Unblock** reverses it (`soc-block del <ip>`).
+
+Safety: the helper and the backend both refuse anything that is not a bare IPv4
+address and both refuse allow-listed addresses.
+
+Other response actions (`disable account`, `isolate host`, `reset credentials`)
+are recorded on the incident timeline and carried out **manually** — the
+platform does not automate them.
+
+## 10. Roles
+
+| Role | Can do |
+|---|---|
+| `analyst` | Triage alerts, investigate, add notes/evidence, record actions. |
+| `lead` | Everything an analyst can, plus change alert status, close incidents and export alert evidence. |
+| `admin` | Everything a lead can, plus user management. |
+
+## 11. Troubleshooting
+
+- **"Login failed"** — check the username/password; the backend stays the
+  security boundary and rejects invalid credentials.
+- **Pages empty / "No data yet"** — confirm `soc-backend`, `soc-collector`,
+  `soc-detection` and `soc-agent` are running
+  (`systemctl status soc-* mini-soc-ids`).
+- **`401` after working earlier** — the JWT expired; sign in again.
+- **No alerts from attack traffic** — check the log agent is tailing the files
+  (`journalctl -u soc-agent -f`) and the collector is receiving them
+  (`journalctl -u soc-collector -f`).
+
+---
+
+*Only monitor systems you are authorised to test. Never share secrets, keys or
+unredacted sensitive logs.*

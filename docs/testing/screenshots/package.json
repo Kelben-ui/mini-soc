@@ -1,0 +1,12 @@
+{
+  "name": "mini-soc-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Playwright capture of the Mini SOC dashboard for the analyst user guide.",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.0"
+  }
+}

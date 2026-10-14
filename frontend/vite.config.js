@@ -29,5 +29,13 @@ export default defineConfig({
   },
   preview: {
     host: '127.0.0.1',
+    // Mirror the dev proxy so `vite preview` on a built bundle can talk to a
+    // local backend (used for user-guide screenshots; see docs/testing/screenshots).
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
 })

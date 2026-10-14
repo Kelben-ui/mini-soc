@@ -2,3 +2,6 @@
 #   pip install -r requirements-dev.txt
 -r requirements.txt
 pytest==8.2.2
+
+# Slide deck generation (Phase 9.8) — docs/slides/build_slides.py
+python-pptx==1.0.2
