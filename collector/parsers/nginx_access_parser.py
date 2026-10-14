@@ -14,8 +14,11 @@ from collector.parsers.common import get_hostname, get_private_ip, to_utc_iso
 #
 # `$time_iso8601` carries the UTC offset, `body=` is placed at the end of the
 # line so payloads containing quotes or newlines cannot break parsing.
+#
+# `$remote_user` is empty for anonymous requests, which nginx renders as two
+# spaces (`<ip> -  [iso=...]`) rather than `-`; both forms are accepted.
 LOG_PATTERN = re.compile(
-    r'^(?P<ip>\S+) - (?P<remote_user>\S+) '
+    r'^(?P<ip>\S+) - (?P<remote_user>\S*) '
     r'\[iso=(?P<timestamp>[^\]]+)\] '
     r'"(?P<method>\S+) (?P<request_uri>\S+) (?P<protocol>[^"]*)" '
     r'(?P<status>\d{3}) (?P<bytes>\d+) '

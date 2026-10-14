@@ -21,6 +21,24 @@ SOC_404 = (
     '"-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" body='
 )
 
+# Anonymous requests: nginx leaves $remote_user empty, i.e. two spaces between
+# the literal dash and `[iso=`.
+SOC_ANON = (
+    '::1 -  [iso=2026-10-14T14:42:31+00:00] '
+    '"GET /index.html HTTP/1.1" 200 458 '
+    '"" "curl/8.18.0" body='
+)
+
+
+def test_empty_remote_user_parses():
+    result = parse(SOC_ANON)
+
+    assert result is not None
+    assert result["src_ip"] == "::1"
+    assert result["user"] is None
+    assert result["outcome"] == "success"
+    assert result["details"]["status"] == 200
+
 
 def test_get_is_normalized_with_http_request_action():
     result = parse(SOC_GET)
