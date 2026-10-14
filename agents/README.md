@@ -29,25 +29,29 @@ dumb: every path, URL and batch size comes from configuration, never from code.
 
 ## Batching, offsets and spooling
 
-- Lines are batched **per source**: sent when `batch_size` lines accumulate or
-  `batch_timeout` seconds elapse, as one
+- Lines are batched **per source**: sent when `batch.max_lines` lines accumulate
+  or `batch.max_seconds` seconds elapse, as one
   `{"host": ..., "log_type": ..., "lines": [...]}` request to
-  `COLLECTOR_INGEST_URL` (default `http://127.0.0.1:9000/ingest`) with the
-  `X-Ingest-Key` header.
+  `collector_url` / `COLLECTOR_INGEST_URL` (default
+  `http://127.0.0.1:9000/ingest`) with the `X-API-Key` header.
 - File offsets are kept in `/var/lib/mini-soc/agent/state.json` keyed by
   `(path, inode)`, so rotation and restarts neither drop nor duplicate lines.
-- If the collector is unreachable, batches are spooled under
-  `/var/lib/mini-soc/agent/spool/` and retried; failed sends are never silently
-  dropped.
-- A heartbeat is sent every `heartbeat_interval` seconds to
-  `HEARTBEAT_URL` (default `http://127.0.0.1:8000/api/agents/heartbeat`).
+- If the collector is unreachable (connection error, timeout or a 5xx), batches
+  are spooled under `/var/lib/mini-soc/agent/spool/` and replayed FIFO with
+  backoff. A 4xx (e.g. `422` for lines no parser accepts) is treated as
+  delivered, since retrying it forever would only grow the spool.
+- A heartbeat is sent every `heartbeat.seconds` / `AGENT_HEARTBEAT_SECONDS`
+  (default 30 s) to `heartbeat.url` (default
+  `http://127.0.0.1:8000/api/agents/heartbeat`).
 
 ## Configuration
 
 `/etc/mini-soc/agent.yaml` (installed from `agent.example.yaml`, mode `0640`).
 Environment variables override YAML. See `log_agent/config.py` for the full list
-(`COLLECTOR_INGEST_URL` / `COLLECTOR_URL`, `HEARTBEAT_URL`, `AGENT_HOST`, batch
-sizes, watched `sources`, etc.).
+(`COLLECTOR_INGEST_URL` / `COLLECTOR_URL`, `BACKEND_URL` for the heartbeat,
+`SOC_HOSTNAME`, `INGEST_API_KEY`, `AGENT_CONFIG`, `AGENT_BUFFER_DIR`,
+`AGENT_HEARTBEAT_SECONDS`). Watched sources are configured under `files:` /
+`journal:` in the YAML only.
 
 ## Running
 
@@ -55,8 +59,9 @@ sizes, watched `sources`, etc.).
 # Tests
 pytest agents -q
 
-# One-shot / foreground run (dev)
-python -m agents.log_agent.agent --config /etc/mini-soc/agent.yaml
+# One-shot / foreground run (dev); reads $AGENT_CONFIG,
+# default /etc/mini-soc/agent.yaml
+python -m agents.log_agent.agent
 ```
 
 In production it runs as the `soc-agent` systemd unit

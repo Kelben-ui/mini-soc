@@ -10,7 +10,7 @@ formats.
 
 - FastAPI app (`collector/main.py`), bound to `127.0.0.1:9000`.
 - `POST /ingest` — accepts `{"host", "log_type", "lines": [...]}` (batched) or
-  the legacy single-line shape. Requires the `X-Ingest-Key` header matching
+  the legacy single-line shape. Requires the `X-API-Key` header matching
   `INGEST_API_KEY` (auth is skipped when the variable is unset, for local dev).
 - `GET /` — liveness.
 - Parsed events are POSTed to the backend ingest API
