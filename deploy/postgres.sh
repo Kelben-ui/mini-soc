@@ -71,16 +71,13 @@ systemctl restart postgresql
 
 # --- Role + database --------------------------------------------------------
 log "Ensuring role and database exist"
+# psql does not interpolate :'var' inside a dollar-quoted DO block, so build
+# the statements with format() and execute them with \gexec instead.
 sudo -u postgres psql -v ON_ERROR_STOP=1 \
   -v user="$DB_USER" -v pass="$DB_PASSWORD" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'user') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'user', :'pass');
-  ELSE
-    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'user', :'pass');
-  END IF;
-END $$;
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'user', :'pass')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'user')\gexec
+SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'user', :'pass')\gexec
 SQL
 
 if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
