@@ -1,0 +1,9 @@
+# Mini SOC response-action helper (task 4.7).
+#
+# deploy/install.sh renders this to /etc/sudoers.d/mini-soc-soc-block (0440)
+# and validates it with `visudo -c`.  It lets the backend service user run
+# exactly one command as root, without a password - nothing else.
+#
+# The backend removes NoNewPrivileges from its own unit so sudo can escalate;
+# every other hardening directive in soc-backend.service stays in place.
+@SOC_USER@ ALL=(root) NOPASSWD: /usr/local/sbin/soc-block

@@ -48,3 +48,17 @@ class Action(Base):
         Text,
         nullable=False
     )
+
+    # IPS execution state (task 4.7).  An action is first *recorded*; the
+    # analyst then confirms and the backend runs the soc-block helper, moving
+    # the status to executed (or failed).  Unblocking moves it to unblocked.
+    status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="recorded"
+    )
+
+    executed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )

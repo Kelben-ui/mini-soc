@@ -22,16 +22,25 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./ci-smoke.db
         run: |
-          python -c "import mini_soc_config, collector.main, detection.run, backend.app.main; print('imports ok')"
+          python -c "import mini_soc_config, collector.main, detection.run, backend.app.main, ids.live_ids_ips; print('imports ok')"
       - name: Shell script syntax
         run: |
           bash -n deploy/install.sh
           bash -n deploy/update.sh
           bash -n deploy/postgres.sh
+          bash -n deploy/soc-block
+          bash -n attack-sim/outbound-conn.sh
+          bash -n attack-sim/dns-tunnel-sim.sh
       - name: Run collector parser tests
         run: pytest -v collector
       - name: Run log agent tests
         run: pytest -v agents
+      - name: Run IDS tests
+        run: pytest -v ids
+      - name: Run backend tests
+        env:
+          DATABASE_URL: sqlite:///./ci-backend.db
+        run: pytest -v backend
       - name: Detection replay (13 rules vs SQLite)
         env:
           DATABASE_URL: sqlite:///./ci-replay.db

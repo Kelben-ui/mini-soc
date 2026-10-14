@@ -44,7 +44,8 @@ instead of a CIDR range.
 2. Make scripts executable:
 
    ```bash
-   chmod +x port-scan.sh ssh-bruteforce.sh web-attacks.sh recon-chain.sh
+   chmod +x port-scan.sh ssh-bruteforce.sh web-attacks.sh recon-chain.sh \
+            outbound-conn.sh dns-tunnel-sim.sh
    ```
 
 3. Create a password list for the brute-force script (never reuse these
@@ -111,6 +112,30 @@ across 2+ categories within 30 minutes) and for the final live demo.
 
 Since web target and SSH target are now the same host, no separate
 IP juggling is needed — the single EC2 public IP is used throughout.
+
+### `outbound-conn.sh` (run **on the instance**)
+Opens a TCP connection to a destination port outside the allow-list
+(53/80/443/123). The `SOC_OUT` nftables rule logs the new outbound
+connection, which triggers the `unusual_outbound` (NET-OUTBOUND-001)
+rule. This is the host-originated half of the IDS, so it runs on the
+EC2 instance rather than from Kali.
+
+```bash
+./outbound-conn.sh <dest_ip> [dest_port]   # e.g. 203.0.113.5 4444
+```
+
+### `dns-tunnel-sim.sh` (run **on the instance**)
+Sends DNS lookups with an over-long label (60 characters, above the
+default `IDS_DNS_MAX_LABEL` of 50) — the shape of DNS tunnelling. The IDS
+sniffs the queries on UDP/53 and raises `unusual_dns` (DNS-ANOMALY-001).
+
+```bash
+./dns-tunnel-sim.sh [count]                # default 5 lookups
+```
+
+Both scripts expect the query/connection to fail (the destination is a
+reserved address / non-existent domain) — that is fine, the packet has
+already left the host and been logged before it fails.
 
 ## Known gaps / to confirm
 

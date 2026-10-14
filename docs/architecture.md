@@ -29,7 +29,8 @@ This implementation differs from the original project specification
 
 | Area | Spec reference design | What we built instead | Reason |
 |---|---|---|---|
-| Intrusion detection | Suricata IDS on fw-01's inside interface, `eve.json` output | A custom Python IDS/IPS daemon (`ids/live_ids_ips.py`) — reads `journalctl` for auth/SSH events, detects Nmap/SSH brute-force patterns, and can block offending IPs | Team decision: a lightweight IDS/IPS with configurable thresholds and allow-lists is easier to run and understand in a one-VM lab, and satisfies the detection learning objectives without a Suricata dependency |
+| Intrusion detection | Suricata IDS on fw-01's inside interface, `eve.json` output | A custom Python IDS/IPS daemon (`ids/live_ids_ips.py`) — reads the journal for firewall/SSH events plus a raw DNS sniffer, applies configurable signatures, and writes Suricata-style JSON | Team decision: a lightweight IDS/IPS with configurable thresholds and allow-lists is easier to run and understand in a one-VM lab, and satisfies the detection learning objectives without a Suricata dependency |
+| Intrusion prevention | Suricata inline drop | **Human-confirmed host blocking**: the analyst confirms a `block IP` action in the dashboard and the backend runs the small `soc-block` helper through a sudoers entry to add the address to the nftables `blocklist` set. Detection never blocks on its own | Keeps a person in the loop for every block (contracts §9.5) and constrains the only privileged action to one audited script |
 | Deployment / packaging | Docker Compose stack on soc-01, one-command startup | All components run as **systemd services directly on Ubuntu 24.04**, no containers | One-VM deployment; simpler ops and reproducible systemd hardening (NoNewPrivileges, ProtectSystem=strict, scoped ReadWritePaths) |
 | Lab topology | 5 separate VMs (fw-01, web-01, srv-01, soc-01, atk-01) across an isolated two-segment network | **One AWS EC2 instance** hosts web target, SSH target, and the full SOC stack together. The attacker (Kali) is a local VM attacking over the internet | Avoids multi-VM resource requirements; EC2 gives a realistic internet-facing target |
 | Code location | `/opt/mini-soc` | `/home/ubuntu/mini-soc` | Matches the live lab instance; the repo is the single source of truth for this path |
@@ -71,11 +72,12 @@ Notes:
 - Web target, SSH target, and the SOC stack are **one host**, so log shipping is
   local. The log agent tails the files and spools to disk while the backend is
   down (`AGENT_SPOOL_DIR`), replaying on recovery.
-- `ids/live_ids_ips.py` detects (journalctl/auth-log parsing for Nmap and SSH
-  brute-force patterns) and can enforce (host-level blocking). It writes JSON
-  alerts to `IDS_OUTPUT` (`/var/log/mini_soc_ids.json`); the log agent forwards
-  those lines to the collector, which normalizes them and stores them as events.
-  It does **not** write to PostgreSQL directly.
+- `ids/live_ids_ips.py` is **detection-only**. It parses firewall log lines
+  (`SOC_DROP:`/`SOC_OUT:` from nftables via the journal) and SSH auth failures,
+  plus raw DNS queries off the wire, and writes JSON alerts to `IDS_OUTPUT`
+  (`/var/log/mini_soc_ids.json`); the log agent forwards those lines to the
+  collector, which normalizes them and stores them as events. It does **not**
+  write to PostgreSQL directly and never blocks on its own — see Section 3.2.
 - `detection/run.py` runs the detection engine in a loop with a checkpoint
   (`/var/lib/mini-soc/detection_checkpoint.json`) so alerts appear within a few
   seconds of a new event.
@@ -113,6 +115,52 @@ dir and the source list.  Behaviour:
   needs the journal group, while log files and the IDS output need `adm` and
   `mini-soc-ids` respectively.
 
+### 3.2 IDS/IPS (Phase 4 rewrite, spec §4.1)
+
+`ids/live_ids_ips.py` replaces Suricata. It is **config-driven** — every
+threshold, window, cooldown, allow-list, output path and hostname is read from
+`/etc/mini-soc/ids.yaml` (`IDS_CONFIG`); a small set of `IDS_*`/`SOC_HOSTNAME`
+environment variables (injected via the unit's `EnvironmentFile`) override
+individual values, which is what the tests use to keep clocks small.
+
+Detection:
+
+- **Firewall input (port scan)** — every `SOC_DROP:` line from nftables is
+  parsed for `SRC`/`DPT`; ≥ `scan.threshold` distinct destination ports from one
+  source within `scan.window_sec` raises signature `9000001`.
+- **SSH brute force** — failed logins are counted per source; ≥
+  `ssh.threshold` within `ssh.window_sec` raises signature `9000002`.
+- **SYN flood** — new inbound SYNs per source above `syn.threshold` within
+  `syn.window_sec` raise signature `9000003` (the demo uses a modest rate; the
+  signature is deliberately configurable rather than tuned for a real flood).
+- **Unusual outbound** — each `SOC_OUT:` line for a destination port outside
+  `outbound.allow_ports` raises signature `9000005` (`unusual_outbound`).
+- **DNS anomaly** — a pure-stdlib `AF_PACKET` sniffer (`ids/dns_sniffer.py`)
+  reads UDP/53 queries and raises signature `9000004` when a label is longer
+  than `dns.max_label` or the query rate exceeds `dns.rate_per_min`. This is
+  why the unit needs `CAP_NET_RAW` (and nothing else), and it can be disabled
+  with `dns.enabled: false`.
+
+Each alert is one line of Suricata-style JSON on `/var/log/mini_soc_ids.json`
+(owned `mini-soc-ids:mini-soc`, `0640`), and every event carries the **raw**
+line it came from so the collector retains it verbatim. There is a per-`(ip,
+signature)` cooldown (`general.cooldown_sec`) so a scan does not emit one alert
+per packet, and the allow-list (`allow_list.analyst_ips` +
+`allow_list.approved_scanner_ips`) suppresses noise from known-good sources.
+
+Prevention (task 4.7) is a separate, human-driven step:
+
+- An analyst records a `block IP` response action on an incident
+  (`POST /api/incidents/{id}/actions`).
+- The dashboard shows a confirm dialog; on confirmation the backend calls
+  `POST /api/actions/{id}/execute`, which validates the target (bare IPv4, not
+  allow-listed — enforced in the backend **and** the helper) and runs
+  `/usr/local/sbin/soc-block` through sudo.
+- `deploy/sudoers/mini-soc-soc-block` lets the backend user run **only** that
+  one script with no password (the backend unit therefore drops
+  `NoNewPrivileges=yes`); the helper adds the address to the nftables
+  `blocklist` set with a timeout. `POST /api/actions/{id}/unblock` reverses it.
+
 ## 4. Deployment architecture (AWS EC2)
 
 The canonical layout (created by `deploy/install.sh`):
@@ -123,6 +171,10 @@ The canonical layout (created by `deploy/install.sh`):
 | Venv | `/home/ubuntu/mini-soc/.venv` |
 | Config | `/etc/mini-soc/.env` (0640, `root:mini-soc`) |
 | Agent config | `/etc/mini-soc/agent.yaml` (0640, `root:mini-soc`) |
+| IDS config | `/etc/mini-soc/ids.yaml` (0640, `root:mini-soc`) |
+| Allow-list | `/etc/mini-soc/allowlist.txt` (0640, `root:mini-soc`, rendered from `ids.yaml`) |
+| Block helper | `/usr/local/sbin/soc-block` + `/etc/sudoers.d/mini-soc-soc-block` |
+| Firewall | `/etc/nftables.conf` (logs `SOC_DROP:`/`SOC_OUT:`, holds the `blocklist` set) |
 | State | `/var/lib/mini-soc/{evidence,agent/spool}` + `agent/state.json` |
 | Logs | journald (`journalctl -u soc-backend -f`) |
 | Database | PostgreSQL 16 on `localhost:5432` |
@@ -131,14 +183,20 @@ The canonical layout (created by `deploy/install.sh`):
 - **One EC2 instance** (Ubuntu 24.04) runs everything: Nginx + PHP-FPM + MariaDB
   + DVWA (web target), sshd with a test account (SSH target), and the full SOC
   stack as systemd services. See `docs/lab-setup.md` for instance details.
-- **Security Group** is the perimeter control, replacing fw-01's nftables role
-  for inbound filtering:
+- **Security Group** is the perimeter control: it decides what can reach the
+  instance at all.  **nftables on the host** (`/etc/nftables.conf`, installed by
+  `install.sh`) is the second layer: it logs what actually arrived (input drops
+  as `SOC_DROP:`, new outbound connections as `SOC_OUT:` — the IDS's input),
+  allows only 22/80/443 plus established/ICMP, and enforces the `blocklist` set
+  the response-action helper writes.
   - Inbound: TCP 22 and 80 are open so the attack can reach the box from the
     internet, matching the spec's "only 22 and 80 allowed" rule.
   - The dashboard/API nginx endpoint (443, plus 80 redirect) and the API itself
     (bound to `127.0.0.1:8000`) are restricted to analyst IPs only, not opened to
     the world. See `docs/testing/` and the Security Group notes in `README.md`.
-  - Outbound: default allow, or tightened per `docs/testing/` findings.
+  - Outbound: default allow, or tightened per `docs/testing/` findings.  Only
+    traffic that reaches the host is logged by nftables — the Security Group
+    drops everything else before it arrives, so the two must be kept in sync.
 - **No internal network segmentation** exists the way the original
   fw-01/lab-attack/lab-servers design had it — the Security Group is the only
   layer in that role. `live_ids_ips.py`'s host-level rules add a second layer.
@@ -178,8 +236,8 @@ The canonical layout (created by `deploy/install.sh`):
 | Host | AWS EC2, Ubuntu Server 24.04 LTS | Single instance — see Section 4 |
 | Attacker | Kali Linux (local VM on laptop) | Attacks over the public internet |
 | Web target | Nginx + PHP-FPM + MariaDB + DVWA | Custom log format includes request body |
-| Intrusion detection/prevention | `ids/live_ids_ips.py` (custom Python daemon) | journalctl + host blocking; replaces Suricata — see Section 2 |
-| Perimeter filtering | AWS Security Group | Replaces fw-01/nftables role — see Section 4 |
+| Intrusion detection/prevention | `ids/live_ids_ips.py` (custom Python daemon) | journal + AF_PACKET DNS detection; human-confirmed blocking via `soc-block` — replaces Suricata, see Sections 2 and 3.2 |
+| Perimeter filtering | AWS Security Group + host nftables | SG decides what arrives; nftables logs it and enforces the blocklist — see Section 4 |
 | Collector + detection | Python 3.11+ | Rules stored as YAML files |
 | Database | PostgreSQL 16 | Schema managed with Alembic migrations |
 | Backend API | FastAPI | JWT authentication |

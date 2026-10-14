@@ -17,10 +17,12 @@ git clone https://github.com/Kelben-ui/mini-soc.git ~/mini-soc
 sudo bash ~/mini-soc/deploy/install.sh
 ```
 
-`deploy/install.sh` is idempotent and does everything: OS packages, Node 20,
-the checkout, service users, directories, the venv, **PostgreSQL 16**
-(PGDG repo + role + database), Alembic migrations, the frontend build, the
-systemd units, the nginx site + self-signed TLS certificate, and service start.
+`deploy/install.sh` is idempotent and does everything: OS packages (including
+**nftables**), Node 20, the checkout, service users, directories, the venv,
+**PostgreSQL 16** (PGDG repo + role + database), Alembic migrations, the
+frontend build, the systemd units, the nginx site + self-signed TLS certificate,
+the **IDS config + allow-list + `soc-block` helper + sudoers rule**, the host
+firewall (`/etc/nftables.conf`), and service start.
 
 Then check health and open the dashboard:
 
@@ -45,9 +47,12 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
 - **Services** — `soc-backend` (uvicorn 127.0.0.1:8000), `soc-collector`
   (127.0.0.1:9000), `soc-detection` (`python -m detection.run`, checkpointed
   loop), `soc-agent`, `mini-soc-ids`. All run as the dedicated `mini-soc` /
-  `mini-soc-ids` users with `NoNewPrivileges`, `ProtectSystem=strict` and scoped
-  `ReadWritePaths`. There is exactly **one** detection loop (the legacy
-  `mini-soc-worker` unit was removed) so alerts are not processed twice.
+  `mini-soc-ids` users with `ProtectSystem=strict` and scoped
+  `ReadWritePaths`. `soc-backend` is the one exception to
+  `NoNewPrivileges`: it runs the sudo-confined `soc-block` helper (task 4.7),
+  and sudoers allows it nothing but that script. There is exactly **one**
+  detection loop (the legacy `mini-soc-worker` unit was removed) so alerts are
+  not processed twice.
 - **nginx (Phase 1.2)** — the site uses the `soc` log format from
   `deploy/nginx/mini-soc.conf` (`access_log /var/log/nginx/access.log soc;`),
   which appends `body=...` so the collector can URL-decode `uri`/`query`/`body`
@@ -71,6 +76,16 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
   `agent.yaml`, and gives the agent the `adm`, `mini-soc-ids` and
   `systemd-journal` supplementary groups so it can read those files, the IDS
   output and the kernel journal - never as root.
+- **IDS/IPS (Phase 4)** — `ids/live_ids_ips.py` replaces Suricata and is
+  **detection-only**. Every threshold, window, allow-list and signature is read
+  from `/etc/mini-soc/ids.yaml` (nothing hard-coded). It tails the nftables
+  `SOC_DROP:`/`SOC_OUT:` journal lines (+ auth log) and sniffs DNS off the wire
+  with `CAP_NET_RAW`, writing one Suricata-style JSON line per alert to
+  `/var/log/mini_soc_ids.json`. Blocking is a separate, human-confirmed step:
+  the dashboard records a `block IP` action, the analyst confirms it, and the
+  backend runs `soc-block` via sudo to add the IP to `/etc/nftables.conf`'s
+  `blocklist` set (the allow-list is enforced in both the backend and the
+  helper). See `docs/architecture.md` §3.2.
 - **Security Group** — restrict the dashboard (443 and the 80 redirect) and SSH
   to the analyst IP; do not expose `5173`/`4173`. See Phase 0.3.
 - **Local development** — copy `.env.example` to `.env`, run the backend
@@ -87,7 +102,7 @@ See [docs/architecture.md](docs/architecture.md).
 | Original | Current (EC2/systemd) | Reason |
 |---|---|---|
 | Docker-based deployment | Native systemd services (`deploy/systemd/` + `install.sh`/`update.sh`) | One-VM EC2 deployment; simpler ops, reproducible with systemd hardening |
-| Suricata IDS | Custom lightweight IDS/IPS (`ids/`, `mini-soc-ids.service`) | Team's IDS/IPS with configurable thresholds, allow-lists, host blocking |
+| Suricata IDS | Custom lightweight IDS/IPS (`ids/`, `mini-soc-ids.service`) | Team's IDS/IPS with configurable thresholds and allow-lists; **detection-only**, with human-confirmed blocking via `soc-block` |
 | Multi-VM distributed setup | Single EC2 instance | Streamlined for lab/demo environment; all services on localhost |
 | Code at `/opt/mini-soc` | Code at `/home/ubuntu/mini-soc` | Matches the live lab instance; repo is the single source of truth |
 | Dashboard on plain HTTP :80 | nginx TLS on :443 (self-signed by default) + :80 redirect | Protects credentials in transit; no Vite port exposed on EC2 |
@@ -108,6 +123,10 @@ IDS, multi-VM → one EC2) were agreed with the supervisor in week 1; see
 - Detection checkpoint: `/var/lib/mini-soc/detection_checkpoint.json`
 - Logs: journald (`journalctl -u soc-detection -f`)
 - IDS output: `/var/log/mini_soc_ids.json`
+- IDS config: `/etc/mini-soc/ids.yaml` (0640)
+- Response allow-list: `/etc/mini-soc/allowlist.txt` (0640)
+- Block helper: `/usr/local/sbin/soc-block` + `/etc/sudoers.d/mini-soc-soc-block`
+- Host firewall: `/etc/nftables.conf`
 - nginx site: `/etc/nginx/sites-available/mini-soc.conf`
 - TLS cert/key: `/etc/ssl/mini-soc/mini-soc.{crt,key}`
 

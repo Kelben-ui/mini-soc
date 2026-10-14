@@ -52,18 +52,25 @@ address as in earlier drafts of the attack-sim scripts. See
 | 8 | Scanner user agent | sqlmap/nikto/nmap/gobuster in User-Agent | [FILL IN: not yet in web-attacks.sh — add a curl call with `-A "sqlmap/1.8"` as a new case] | MEDIUM | | |
 | 9 | HTTP flood | >300 requests, same src_ip, 1 min | [FILL IN: not yet scripted — add a loop sending >300 rapid GETs. Note: against a real internet-facing EC2 instance, be conservative here — this can resemble a DoS test, which AWS restricts. Keep it brief and well under any sustained-flood threshold.] | MEDIUM | | |
 | 10 | Port scan | ≥20 distinct dest ports, same src_ip, 1 min | `port-scan.sh $TARGET` | MEDIUM | | |
-| 11 | IDS signature (live_ids_ips.py) | Any IDS alert from the custom daemon, severity mapped from its own classification | [FILL IN: confirm exactly what `live_ids_ips.py` flags — per the earlier report it covers Nmap and SSH brute-force detection via journalctl; confirm if it has other signatures too] | Mapped | | |
-| 12 | Unusual outbound connection | Server opens connection to a port not on an allow-list | [FILL IN: with no separate fw-01, this rule needs a new source — e.g. the host's own outbound iptables/journalctl, or drop this rule if it no longer has a natural log source in the single-instance design. Raise with the team.] | MEDIUM | | |
-| 13 | Unusual DNS activity | Very long subdomains or high query rate from one host | [FILL IN: same concern as #12 — Suricata normally handled DNS inspection; confirm whether this rule is still feasible without it, or should be dropped as an Advanced item given the architecture change] | LOW | | |
+| 11 | IDS signature (custom IDS) | Any alert from `ids/live_ids_ips.py`; severity mapped from the signature | `port-scan.sh $TARGET` or `ssh-bruteforce.sh …` (both feed the IDS) | Mapped | | |
+| 12 | Unusual outbound connection | Server opens connection to a port not on the allow-list | `outbound-conn.sh <dest_ip> <port>` — run **on the instance**, not from Kali | MEDIUM | | |
+| 13 | Unusual DNS activity | Over-long subdomain (or high query rate) from the host | `dns-tunnel-sim.sh` — run **on the instance**, not from Kali | LOW | | |
+
+Rules #12 and #13 are host-originated (they watch what the SOC instance
+itself sends), so their attack-sim scripts run on the EC2 instance rather
+than from the local Kali VM.  The IDS reads them from the nftables
+`SOC_OUT:` journal lines (#12) and a raw `AF_PACKET` DNS sniffer (#13), so
+they no longer depend on Suricata or a separate firewall host.
 
 ## AWS-specific notes
 
 - Rules #12 and #13 (unusual outbound, unusual DNS) assumed Suricata
   sitting inline on fw-01, watching all traffic. With a single
-  internet-facing EC2 instance and no separate firewall host, these two
-  rules may need to be **descoped or re-justified** — flag this
-  explicitly at your next check-in rather than letting it surface at
-  the demo.
+  internet-facing EC2 instance there is no separate firewall host; the
+  custom IDS now provides both sources (nftables `SOC_OUT:` logging and a
+  raw DNS sniffer), so the rules are **kept, not descoped**.
+  - nftables only sees traffic that actually arrives at the host — the
+    Security Group drops everything else, so the two must be kept in sync.
 - Because the EC2 instance is reachable from the whole internet once
   22/80 are open, expect some background noise (automated scanners,
   bots) hitting the box between test sessions. This is a known and
@@ -82,6 +89,19 @@ address as in earlier drafts of the attack-sim scripts. See
 |---|---|---|---|
 | Run `recon-chain.sh <web-01>` (port scan → SQLi → XSS → SSH brute force from one source, within 30 min) | All resulting alerts grouped under one `chain_id`; dashboard suggests promoting to one incident | | |
 
+## Response-action (block) test
+
+The custom IDS is detection-only; blocking is a separate, human-confirmed
+step (task 4.7). Test it end to end:
+
+| Test | Expected result | Actual | Pass/Fail |
+|---|---|---|---|
+| From a finding, record a `block IP` response action targeting the offending src_ip, then confirm it in the dashboard | Backend runs `/usr/local/sbin/soc-block` via sudo; `nft list set inet filter blocklist` shows the IP; the action's `status` becomes `executed`; an audit-log row is written | | |
+| Click **Unblock** on that action | `nft list set inet filter blocklist` no longer shows the IP; `status` becomes `unblocked` | | |
+| Try to block an allow-listed IP (in `/etc/mini-soc/allowlist.txt`) | Refused (HTTP 403) — nothing is added to the set | | |
+| Try to block a non-IPv4 target | Refused (HTTP 400) — nothing is added to the set | | |
+| Call `/api/actions/{id}/execute` without `confirm: true` | Refused (HTTP 400) — the block never runs without confirmation | | |
+
 ## Known issues
 
 [FILL IN as testing proceeds — log any rule that consistently fails,
@@ -93,10 +113,7 @@ The following rules have no attack-sim script yet (see `[FILL IN]`
 markers above) and need scripts added before they can be tested:
 - Scanner user agent
 - HTTP flood
-- IDS signature (depends on your custom IDS's detection logic)
-- Unusual outbound connection
-- Unusual DNS activity
 
-[FILL IN: once your custom IDS's detection logic for IDS-signature,
-outbound, and DNS rules is known, come back and write the matching
-attack-sim scripts and update this plan.]
+Resolved for the IDS-sourced rules: `outbound-conn.sh` (#12) and
+`dns-tunnel-sim.sh` (#13) now exist, and the IDS-signature rule (#11) is
+exercised by the existing `port-scan.sh` / `ssh-bruteforce.sh` runs.

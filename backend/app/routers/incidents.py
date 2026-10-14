@@ -317,7 +317,46 @@ def add_action(
         "performed_at": action.performed_at,
         "reason": action.reason,
         "result": action.result,
+        "status": action.status,
+        "executed_at": action.executed_at,
     }
+
+
+@router.get("/incidents/{incident_id}/actions")
+def get_actions(
+    incident_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("analyst", "lead", "admin"))
+):
+    incident = db.query(Incident).filter(
+        Incident.incident_id == incident_id
+    ).first()
+
+    if not incident:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
+
+    actions = db.query(Action).filter(
+        Action.incident_id == incident_id
+    ).order_by(Action.id.asc()).all()
+
+    return [
+        {
+            "id": action.id,
+            "incident_id": action.incident_id,
+            "action_type": action.action_type,
+            "target": action.target,
+            "performed_by": action.performed_by,
+            "performed_at": action.performed_at,
+            "reason": action.reason,
+            "result": action.result,
+            "status": action.status,
+            "executed_at": action.executed_at,
+        }
+        for action in actions
+    ]
 
 @router.get("/incidents/{incident_id}/report")
 def get_incident_report(

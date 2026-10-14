@@ -8,7 +8,14 @@ Wants=network-online.target
 Type=simple
 User=@IDS_USER@
 Group=@IDS_USER@
-SupplementaryGroups=systemd-journal
+# Reads the systemd journal (systemd-journal), /var/log/{auth,kern}.log (adm)
+# and /etc/mini-soc/ids.yaml (0640 root:@SOC_USER@), so it joins @SOC_USER@ too.
+# It never runs as root.
+SupplementaryGroups=systemd-journal adm @SOC_USER@
+# DNS sniffing (task 4.5) needs a raw socket; grant only CAP_NET_RAW, nothing
+# else.  Set dns.enabled: false in ids.yaml to run without it.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
 WorkingDirectory=@APP_DIR@
 EnvironmentFile=@ENV_FILE@
 ExecStart=@VENV_DIR@/bin/python -m ids.live_ids_ips

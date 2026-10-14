@@ -1,0 +1,96 @@
+#!/bin/bash
+#
+# soc-block - Mini SOC response-action helper (task 4.7).
+#
+# Adds or removes an IPv4 address in the nftables `blocklist` set so the
+# firewall drops it.  This is the ONLY privileged thing the platform does; it
+# is invoked by the backend through sudo (see deploy/sudoers/), which restricts
+# the backend user to exactly this script with no password.
+#
+# Safety (defence in depth - the backend enforces the same rules):
+#   * the address must be a bare IPv4 address (no hostnames, no CIDR);
+#   * an address listed in the allow-list file is refused;
+#   * the operator must be root (sudo) to run it.
+#
+# Usage:
+#   soc-block add <ipv4> [timeout_seconds]   # default timeout 3600
+#   soc-block del <ipv4>
+#
+# Exit codes: 0 ok, 1 refused/invalid, 2 usage error, 3 nft failure.
+
+set -euo pipefail
+
+TABLE="inet"
+FAMILY_TABLE="filter"
+SET="blocklist"
+DEFAULT_TIMEOUT=3600
+ALLOWLIST_FILE="${SOC_BLOCK_ALLOWLIST_FILE:-/etc/mini-soc/allowlist.txt}"
+
+usage() {
+    echo "usage: soc-block {add|del} <ipv4> [timeout_seconds]" >&2
+    exit 2
+}
+
+if [ "$#" -lt 2 ]; then
+    usage
+fi
+
+OP="$1"
+IP="$2"
+TIMEOUT="${3:-$DEFAULT_TIMEOUT}"
+
+case "$OP" in
+    add|del) ;;
+    *) usage ;;
+esac
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "soc-block: must run as root (the backend calls it via sudo)" >&2
+    exit 1
+fi
+
+if ! command -v nft >/dev/null 2>&1; then
+    echo "soc-block: nft not found; install the nftables package" >&2
+    exit 3
+fi
+
+# --- Validate the address (bare IPv4 only) ---------------------------------
+if ! [[ "$IP" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+    echo "soc-block: not a bare IPv4 address: '$IP'" >&2
+    exit 1
+fi
+
+IFS='.' read -r o1 o2 o3 o4 <<< "$IP"
+for octet in "$o1" "$o2" "$o3" "$o4"; do
+    # 10# forces base-10 so a leading zero is never read as octal.
+    if (( 10#$octet < 0 || 10#$octet > 255 )); then
+        echo "soc-block: octet out of range: '$IP'" >&2
+        exit 1
+    fi
+done
+
+if [ "$OP" = "add" ] && ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]]; then
+    echo "soc-block: timeout must be a whole number of seconds" >&2
+    exit 2
+fi
+
+# --- Refuse allow-listed addresses -----------------------------------------
+if [ -r "$ALLOWLIST_FILE" ] && grep -qxF "$IP" "$ALLOWLIST_FILE"; then
+    echo "soc-block: refusing allow-listed address $IP" >&2
+    exit 1
+fi
+
+# --- Apply ----------------------------------------------------------------
+if [ "$OP" = "add" ]; then
+    if nft add element "$TABLE" "$FAMILY_TABLE" "$SET" \
+        "{ $IP timeout ${TIMEOUT}s }"; then
+        echo "blocked $IP for ${TIMEOUT}s"
+    else
+        echo "soc-block: nft failed to add $IP" >&2
+        exit 3
+    fi
+else
+    # Removing an address that is not present is not an error.
+    nft delete element "$TABLE" "$FAMILY_TABLE" "$SET" "{ $IP }" 2>/dev/null || true
+    echo "unblocked $IP"
+fi

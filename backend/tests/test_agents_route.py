@@ -5,36 +5,14 @@ TestClient is unavailable); the 401 authentication behaviour is covered by
 exercising ``verify_ingest_api_key`` directly.
 """
 
-import os
-
 import pytest
 from fastapi import HTTPException
 
-from backend.app.database import Base, engine, SessionLocal
 from backend.app.dependencies import verify_ingest_api_key
 from backend.app.models.agent import Agent
 from backend.app.routers.agents import heartbeat
 from backend.app.routers.stats import get_stats
 from backend.app.schemas.agent import AgentHeartbeat
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _fresh_schema():
-    try:
-        os.remove("backend-ci.db")
-    except FileNotFoundError:
-        pass
-
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture()
-def db():
-    session = SessionLocal()
-    yield session
-    session.close()
 
 
 def test_heartbeat_requires_api_key():

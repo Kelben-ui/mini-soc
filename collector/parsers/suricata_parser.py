@@ -22,7 +22,7 @@ from datetime import datetime
 from collector.parsers.common import get_hostname, to_utc_iso
 
 # Custom Mini SOC IDS signature that describes a port scan (see
-# ids/live_ids_ips.py / infrastructure/fw-01/live_ids_ips.py).
+# ids/live_ids_ips.py).
 PORT_SCAN_SIGNATURE_IDS = {9000001}
 
 DNS_EVENT_TYPES = {"dns", "dns_query"}

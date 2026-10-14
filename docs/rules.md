@@ -143,7 +143,8 @@ in parameters.
 
 ## 3.10 Port Scan
 
-**Source:** nftables / Suricata
+**Source:** custom IDS (`ids/live_ids_ips.py`), signature `9000001`, driven by
+the nftables `SOC_DROP:` journal lines
 
 **Logic:** Detect at least 20 distinct destination ports from the same source within 1 minute.
 
@@ -153,17 +154,26 @@ in parameters.
 
 ## 3.11 IDS Signature
 
-**Source:** Suricata
+**Source:** custom IDS (`ids/live_ids_ips.py`)
 
-**Logic:** Detect any Suricata alert.
+**Logic:** Detect any alert from the custom IDS.  The IDS emits:
 
-**Severity:** Mapped from Suricata priority.
+| Signature id | Detection |
+|---|---|
+| `9000001` | port scan (→ `port_scan`) |
+| `9000002` | SSH brute force |
+| `9000003` | SYN flood (configurable rate, not a real flood) |
+| `9000004` | DNS anomaly (→ `unusual_dns`) |
+| `9000005` | unusual outbound connection (→ `unusual_outbound`) |
+
+**Severity:** Mapped from the signature's `severity`/`priority`.
 
 ---
 
 ## 3.12 Unusual Outbound Connection
 
-**Source:** nftables
+**Source:** custom IDS (`ids/live_ids_ips.py`), signature `9000005`, driven by
+the nftables `SOC_OUT:` journal lines
 
 **Logic:** Detect a server opening a connection to a port that is not on the allow-list.
 
@@ -173,7 +183,8 @@ in parameters.
 
 ## 3.13 Unusual DNS Activity
 
-**Source:** Suricata
+**Source:** custom IDS (`ids/live_ids_ips.py`), signature `9000004`, from the
+raw `AF_PACKET` DNS sniffer
 
 **Logic:** Detect very long subdomains or a high DNS query rate from one host.
 

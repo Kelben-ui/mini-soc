@@ -44,6 +44,9 @@ frontend/dist/
 # Test caches
 .pytest_cache/
 
+# Local CI/test databases (sqlite)
+*.db
+
 # Backup and temporary files
 *.bak
 *.save

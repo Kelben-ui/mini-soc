@@ -144,9 +144,9 @@ Additional requirements:
 
 ## 2.6 IDS JSON output format
 
-The custom IDS on the firewall instance (`fw-01`) writes each alert as a
-single line of JSON to `/var/log/mini_soc_ids.json`. The collector parses
-this file. The IDS alert object format is:
+The custom IDS on the SOC instance writes each alert as a single line of
+JSON to `/var/log/mini_soc_ids.json`. The collector parses this file. The
+IDS alert object format is:
 
 ``` json
 {
@@ -173,6 +173,18 @@ this file. The IDS alert object format is:
   "raw": "original log line, unchanged"
 }
 ```
+
+`host` is the instance hostname (`SOC_HOSTNAME`); the example above keeps the
+legacy `fw-01` value.  The IDS emits these signatures (`event_type` is `alert`
+unless noted):
+
+  Signature id   Detection                                  Normalized to
+  -------------- ------------------------------------------ ------------------------
+  9000001        port scan                                  network / port_scan
+  9000002        SSH brute force                            ids / ids_alert
+  9000003        SYN flood                                  ids / ids_alert
+  9000004        DNS anomaly (`event_type: dns_query`)      dns / unusual_dns
+  9000005        unusual outbound (`outbound_connection`)   network / unusual_outbound
 
 The collector maps each IDS alert to the common event structure with
 `log_type` set to `mini_soc_ids`. Generic IDS alerts are normalized to
@@ -671,6 +683,8 @@ actions
 ├── performed_by
 ├── reason
 ├── result
+├── status
+├── executed_at
 └── timestamp
 ```
 
@@ -692,6 +706,8 @@ actions.performed_by -> users.id
   `performed_by`   User who performed/recorded the action
   `reason`         Reason for the action
   `result`         Result of the action
+  `status`         Block lifecycle: `recorded` / `executed` / `failed` / `unblocked`
+  `executed_at`    When the block helper last ran (null until executed)
   `timestamp`      Time the action occurred
 
 ## 9.4 Supported response action types
@@ -716,6 +732,20 @@ If automated IP blocking is implemented as an advanced feature:
 -   human confirmation is required every time;
 -   the action affects only `fw-01`;
 -   the block must not execute without analyst confirmation.
+
+This platform implements that advanced feature as an explicitly
+**human-confirmed** flow (no automatic blocking):
+
+-   An analyst records a `block IP` response action, then confirms it in the
+    dashboard. `POST /api/actions/{id}/execute` runs the `soc-block` helper via
+    sudo and adds the address to the nftables `blocklist` set (a timeout
+    expires it automatically). `POST /api/actions/{id}/unblock` reverses it.
+-   The helper and the backend both refuse anything that is not a bare IPv4
+    address and both refuse allow-listed addresses.
+-   The address is blocked on the single SOC instance (the firewall is not a
+    separate host).
+-   Every execution is written to the audit log and moves the action's
+    `status` to `executed`/`failed`/`unblocked`.
 
 ------------------------------------------------------------------------
 
@@ -1139,6 +1169,45 @@ The report must contain:
 -   lessons learned
 
 The report may be generated as PDF or HTML.
+
+## 14.7 List response actions
+
+``` http
+GET /api/incidents/{id}/actions
+```
+
+Purpose:
+
+Return the incident's response actions (id, type, target, performer, reason,
+result, status, executed_at) for the incident view.
+
+## 14.8 Execute a response action (block)
+
+``` http
+POST /api/actions/{id}/execute
+```
+
+Purpose:
+
+Confirm and perform a recorded `block IP` action.
+
+The request body must include `confirm: true` (human confirmation). The
+target must be a bare IPv4 address that is not allow-listed. On success the
+backend runs the `soc-block` helper and returns
+`{success, message, action}`; the action's `status` becomes `executed`
+(or `failed`). Requires the `lead`/`admin` role.
+
+## 14.9 Remove a block
+
+``` http
+POST /api/actions/{id}/unblock
+```
+
+Purpose:
+
+Remove a block previously executed by `/api/actions/{id}/execute`.
+
+Also requires `confirm: true`; the action's `status` becomes `unblocked`.
 
 ------------------------------------------------------------------------
 

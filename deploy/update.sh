@@ -47,6 +47,53 @@ for unit in $UNITS; do
 done
 systemctl daemon-reload
 
+# --- Response-action helper + firewall (task 4.4/4.7) -----------------------
+log "Refreshing response-action helper and allow-list"
+ALLOWLIST_FILE="${ALLOWLIST_FILE:-$ETC_DIR/allowlist.txt}"
+"$VENV_DIR/bin/python" - "$ETC_DIR/ids.yaml" "$ALLOWLIST_FILE" <<'PY'
+import sys
+
+import yaml
+
+config_path, allowlist_path = sys.argv[1], sys.argv[2]
+
+with open(config_path, encoding="utf-8") as handle:
+    config = yaml.safe_load(handle) or {}
+
+allow = config.get("allow_list") or {}
+ips = []
+
+for key in ("analyst_ips", "approved_scanner_ips"):
+    for ip in allow.get(key) or []:
+        ip = str(ip).strip()
+        if ip and ip not in ips:
+            ips.append(ip)
+
+with open(allowlist_path, "w", encoding="utf-8") as handle:
+    for ip in ips:
+        handle.write(f"{ip}\n")
+PY
+chmod 640 "$ALLOWLIST_FILE" 2>/dev/null || true
+chown root:"$SOC_USER" "$ALLOWLIST_FILE" 2>/dev/null || true
+
+install -m 0755 "$APP_DIR/deploy/soc-block" /usr/local/sbin/soc-block
+sed -e "s|@SOC_USER@|$SOC_USER|g" \
+    "$APP_DIR/deploy/sudoers/mini-soc-soc-block" \
+    > /etc/sudoers.d/mini-soc-soc-block
+chmod 0440 /etc/sudoers.d/mini-soc-soc-block
+chown root:root /etc/sudoers.d/mini-soc-soc-block
+if command -v visudo >/dev/null 2>&1; then
+  visudo -cf /etc/sudoers.d/mini-soc-soc-block >/dev/null
+fi
+
+log "Refreshing nftables firewall"
+install -m 0644 "$APP_DIR/deploy/nftables/mini-soc.conf" /etc/nftables.conf
+if nft -c -f /etc/nftables.conf; then
+  systemctl restart nftables >/dev/null 2>&1 || nft -f /etc/nftables.conf
+else
+  echo "[update] WARNING: /etc/nftables.conf failed validation; firewall not applied" >&2
+fi
+
 log "Restarting services"
 systemctl restart $UNITS
 

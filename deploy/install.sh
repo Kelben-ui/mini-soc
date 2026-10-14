@@ -59,7 +59,7 @@ fi
 log "Installing OS packages"
 apt-get update -y
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  python3 python3-venv python3-pip git curl ca-certificates openssl nginx sudo rsyslog
+  python3 python3-venv python3-pip git curl ca-certificates openssl nginx sudo rsyslog nftables
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/^v//; s/\..*//')" -lt 20 ]; then
   log "Installing Node.js 20 (NodeSource)"
@@ -121,6 +121,8 @@ chmod 640 /var/log/auth.log /var/log/kern.log \
 if [ ! -f "$ETC_DIR/ids.yaml" ] && [ -f "$APP_DIR/ids/ids.yaml" ]; then
   cp "$APP_DIR/ids/ids.yaml" "$ETC_DIR/ids.yaml"
 fi
+chmod 640 "$ETC_DIR/ids.yaml" 2>/dev/null || true
+chown root:"$SOC_USER" "$ETC_DIR/ids.yaml" 2>/dev/null || true
 
 # --- Log agent config -------------------------------------------------------
 # /etc/mini-soc/agent.yaml drives the agent (collector URL, files, batching,
@@ -161,6 +163,48 @@ python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
 chown -R "$REPO_OWNER:$SOC_USER" "$VENV_DIR"
 chmod -R g+rX "$VENV_DIR"
+
+# --- Response-action helper + allow-list (task 4.7) -------------------------
+# The allow-list is rendered from ids.yaml so the helper and the backend
+# enforce exactly the same set the IDS suppresses (defence in depth).
+log "Installing response-action helper and allow-list"
+ALLOWLIST_FILE="${ALLOWLIST_FILE:-$ETC_DIR/allowlist.txt}"
+"$VENV_DIR/bin/python" - "$ETC_DIR/ids.yaml" "$ALLOWLIST_FILE" <<'PY'
+import sys
+
+import yaml
+
+config_path, allowlist_path = sys.argv[1], sys.argv[2]
+
+with open(config_path, encoding="utf-8") as handle:
+    config = yaml.safe_load(handle) or {}
+
+allow = config.get("allow_list") or {}
+ips = []
+
+for key in ("analyst_ips", "approved_scanner_ips"):
+    for ip in allow.get(key) or []:
+        ip = str(ip).strip()
+        if ip and ip not in ips:
+            ips.append(ip)
+
+with open(allowlist_path, "w", encoding="utf-8") as handle:
+    for ip in ips:
+        handle.write(f"{ip}\n")
+PY
+chmod 640 "$ALLOWLIST_FILE" 2>/dev/null || true
+chown root:"$SOC_USER" "$ALLOWLIST_FILE" 2>/dev/null || true
+
+install -m 0755 "$APP_DIR/deploy/soc-block" /usr/local/sbin/soc-block
+
+sed -e "s|@SOC_USER@|$SOC_USER|g" \
+    "$APP_DIR/deploy/sudoers/mini-soc-soc-block" \
+    > /etc/sudoers.d/mini-soc-soc-block
+chmod 0440 /etc/sudoers.d/mini-soc-soc-block
+chown root:root /etc/sudoers.d/mini-soc-soc-block
+if command -v visudo >/dev/null 2>&1; then
+  visudo -cf /etc/sudoers.d/mini-soc-soc-block >/dev/null
+fi
 
 # --- PostgreSQL 16 + migrations --------------------------------------------
 log "Provisioning PostgreSQL"
@@ -216,6 +260,20 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable --now nginx >/dev/null 2>&1 || true
 systemctl reload nginx
+
+# --- Host firewall (task 4.1/4.4) -------------------------------------------
+# nftables logs input drops (SOC_DROP:) and new outbound connections (SOC_OUT:)
+# for the IDS.  Validate the ruleset before applying it so a typo can never
+# lock the host out.
+log "Installing nftables firewall"
+install -m 0644 "$APP_DIR/deploy/nftables/mini-soc.conf" /etc/nftables.conf
+if nft -c -f /etc/nftables.conf; then
+  nft -f /etc/nftables.conf
+  systemctl enable --now nftables >/dev/null 2>&1 || true
+  systemctl restart nftables >/dev/null 2>&1 || true
+else
+  echo "[install] WARNING: /etc/nftables.conf failed validation; firewall not applied" >&2
+fi
 
 # --- Start services ---------------------------------------------------------
 log "Starting services"

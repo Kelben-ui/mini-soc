@@ -13,7 +13,10 @@ EnvironmentFile=@ENV_FILE@
 ExecStart=@VENV_DIR@/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=2
-NoNewPrivileges=yes
+# NoNewPrivileges is intentionally OFF: the backend runs the sudo-confined
+# response-action helper (task 4.7) and sudo cannot escalate with that flag
+# set.  The privilege is still tightly bounded - sudoers allows only
+# /usr/local/sbin/soc-block (see deploy/sudoers/mini-soc-soc-block).
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectControlGroups=yes
