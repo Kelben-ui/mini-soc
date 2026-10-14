@@ -43,7 +43,7 @@ ones added for 7.7–7.10 (`test_chains_route.py`, `test_incident_detail.py`,
 | 7.9 Event search pagination | M5 | Pass | `GET /api/events` now accepts `limit` (1–500) / `offset` and returns `{items,total,limit,offset}`. `EventSearch.jsx` pages the results and shows "showing X–Y of N". |
 | 7.9 Rule inventory | M5 | Pass | `GET /api/rules` is rewritten to read the YAML rule files and enrich each with live `alerts_count` and `last_fired` (from alerts), returning normalised `id/name/severity/category/enabled/mitre`. `Rules.jsx` shows technique, tactic, fire count and last-fired. |
 | 7.9 Reports page | M5 | Pass | New `Reports.jsx` (task spec §4): totals, threat level, MTTA-style tiles (MTTD/MTTC/MTTR), alerts-by-severity, and an incident-report table that downloads the generated HTML report through the authenticated blob API. |
-| 7.9 User management | M5 | Pass | New `backend/app/routers/users.py`: `GET/POST /api/users`, `PATCH /api/users/{id}`, `POST /api/users/{id}/password` (lead for read, admin for writes), all audited. Guardrails: unique usernames, valid roles only, last admin cannot be demoted, self role-change blocked, 12-char password minimum. New `Users.jsx` provides create / change-role / reset-password. |
+| 7.9 User management | M5 | Pass | New `backend/app/routers/users.py`: `GET/POST /api/users`, `PATCH /api/users/{id}`, `POST /api/users/{id}/password` (lead for read, admin for writes), all audited. Guardrails: unique usernames, valid roles only, last admin cannot be demoted, self role-change blocked, 8-char password minimum. New `Users.jsx` provides create / change-role / reset-password. |
 | 7.10 Threat level | M5 | Pass | `GET /api/stats` computes a server-side `threat_level` (highest of the active-alert and open-incident severities) plus `active_alerts`, `active_alerts_by_severity` and `mean_time_to_detect/contain/resolve_seconds`. `SeverityBanner.jsx` is rewritten to poll `/api/stats` and show the shared posture (level + active alerts + open incidents, with an "Investigate" link when HIGH/CRITICAL). |
 | 7.11 Frontend tests | M5 | Pass | Vitest + React Testing Library (jsdom). `npm test` runs 18 tests across 5 files: `utils/format`, `constants/mitre`, and component/page tests for `SeverityBanner`, `Rules` and the `ChainsList` promote flow. `src/test/setup.js` registers the jest-dom matchers. |
 | 7.11 CI & docs | M5 | Pass | `.github/workflows/ci.yml` adds a frontend `npm test` step after the build. `frontend/README.md` is rewritten (requirements, dev proxy, build, test, lint, deployment/nginx, layout, config table). |
@@ -89,7 +89,7 @@ ones added for 7.7–7.10 (`test_chains_route.py`, `test_incident_detail.py`,
    are not resolved/false-positive/closed and incidents still
    open/investigating/contained, so every client agrees on the posture rather than
    re-deriving it in the browser.
-7. **User-management guardrails.** Beyond the 12-character minimum, the API
+7. **User-management guardrails.** Beyond the 8-character minimum, the API
    rejects duplicate usernames (409), invalid roles (400), demoting the last
    admin, and changing your own role (both 400). The legacy
    `GET /users` shim in `main.py` is retained for backward compatibility while the

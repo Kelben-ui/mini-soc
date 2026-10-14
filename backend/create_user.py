@@ -19,7 +19,7 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.utils.password import hash_password
 
-MIN_PASSWORD_LENGTH = 12
+MIN_PASSWORD_LENGTH = 8
 
 
 def prompt_password() -> str:

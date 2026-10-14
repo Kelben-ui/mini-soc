@@ -10,7 +10,7 @@ Guardrails:
   * roles are restricted to analyst/lead/admin;
   * the last remaining admin cannot be demoted;
   * you cannot change your own role (prevents locking yourself out);
-  * passwords keep the 12-character minimum used by the CLI.
+  * passwords keep the 8-character minimum used by the CLI.
 """
 
 from datetime import datetime, timezone

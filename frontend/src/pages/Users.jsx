@@ -8,7 +8,7 @@ import {
 } from "../api/users";
 
 const ROLES = ["analyst", "lead", "admin"];
-const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function Users() {
   const role = getRole();
