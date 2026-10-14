@@ -8,6 +8,12 @@ Real lines look like:
     Oct 13 09:14:01 ip-172-31-13-199 sshd[2261]: Accepted publickey for
     ubuntu from 143.105.152.60 port 52313 ssh2: RSA SHA256:abc...
 
+Modern rsyslog (``RSYSLOG_FileFormat``, the default on recent Ubuntu) writes an
+ISO timestamp instead of the classic syslog one, so this is also accepted:
+
+    2026-10-14T14:24:06.152339+00:00 ip-172-31-13-199 sshd[2203]: Failed
+    password for root from 203.0.113.9 port 52820 ssh2
+
 SSH login events get ``action: ssh_login`` and ``dst_ip`` set to the
 instance private IP (port 22).  ``message repeated N times`` summary
 lines are ignored (the original lines are already counted).
@@ -21,7 +27,11 @@ from datetime import datetime, timezone
 from collector.parsers.common import get_hostname, get_private_ip, to_utc_iso
 
 LINE_PATTERN = re.compile(
-    r'^(?P<timestamp>\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}) '
+    r'^(?:'
+    r'(?P<iso_ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}:?\d{2})'
+    r'|'
+    r'(?P<timestamp>\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})'
+    r') '
     r'(?P<log_host>\S+) '
     r'(?P<process>[^:]+): '
     r'(?P<message>.*)$'
@@ -56,15 +66,28 @@ def parse(line):
     if "message repeated" in message.lower():
         return None
 
-    try:
-        ts_dt = datetime.strptime(
-            f"{datetime.now(timezone.utc).year} {data['timestamp']}",
-            "%Y %b %d %H:%M:%S",
-        )
-    except ValueError:
-        return None
+    if data.get("iso_ts"):
+        # rsyslog RSYSLOG_FileFormat: 2026-10-14T14:24:06.152339+00:00
+        iso = data["iso_ts"]
 
-    ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+        # datetime.fromisoformat wants +HH:MM before Python 3.11.
+        if re.search(r"[+-]\d{4}$", iso):
+            iso = f"{iso[:-2]}:{iso[-2:]}"
+
+        try:
+            ts_dt = datetime.fromisoformat(iso).astimezone(timezone.utc)
+        except ValueError:
+            return None
+    else:
+        try:
+            ts_dt = datetime.strptime(
+                f"{datetime.now(timezone.utc).year} {data['timestamp']}",
+                "%Y %b %d %H:%M:%S",
+            )
+        except ValueError:
+            return None
+
+        ts_dt = ts_dt.replace(tzinfo=timezone.utc)
 
     src_ip = None
     src_port = None

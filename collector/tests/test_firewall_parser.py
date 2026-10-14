@@ -34,6 +34,13 @@ SOC_DROP_SHORT_ISO = (
     "ID=57626 DF PROTO=TCP SPT=34567 DPT=443 WINDOW=64240 RES=0x00 SYN URGP=0"
 )
 
+# Newer systemd emits an RFC 3339 offset with a colon (``+00:00``).
+SOC_OUT_SHORT_ISO_COLON = (
+    "2026-10-14T14:24:07+00:00 ip-172-31-13-199 kernel: SOC_OUT: IN= OUT=ens5 "
+    "SRC=172.31.13.199 DST=169.254.169.123 LEN=60 TOS=0x00 PREC=0x00 TTL=64 "
+    "ID=1234 DF PROTO=UDP SPT=53211 DPT=123"
+)
+
 
 def test_drop_is_normalized():
     result = parse(SOC_DROP)
@@ -88,6 +95,17 @@ def test_journald_short_iso_line_parses():
     assert result["src_port"] == 34567
     assert result["dst_port"] == 443
     assert result["timestamp"] == "2026-10-13T09:11:02Z"
+
+
+def test_journald_short_iso_colon_offset_parses():
+    result = parse(SOC_OUT_SHORT_ISO_COLON)
+
+    assert result is not None
+    assert result["action"] == "out"
+    assert result["src_ip"] == "172.31.13.199"
+    assert result["dst_ip"] == "169.254.169.123"
+    assert result["dst_port"] == 123
+    assert result["timestamp"] == "2026-10-14T14:24:07Z"
 
 
 def test_malformed_lines_return_none():

@@ -26,6 +26,18 @@ SUDO = (
     "session opened for user root by (uid=0)"
 )
 
+# rsyslog RSYSLOG_FileFormat (default on recent Ubuntu): ISO timestamp.
+ISO_FAILED = (
+    "2026-10-14T14:24:06.152339+00:00 ip-172-31-13-199 sshd[2203]: "
+    "Failed password for root from 203.0.113.9 port 52820 ssh2"
+)
+
+ISO_SUDO = (
+    "2026-10-14T14:24:06.152339+00:00 ip-172-31-13-199 sudo: ubuntu : "
+    "TTY=/dev/pts/4 ; PWD=/home/ubuntu/mini-soc ; USER=root ; "
+    "COMMAND=/usr/bin/true"
+)
+
 
 def test_failed_ssh_login():
     result = parse(FAILED)
@@ -71,6 +83,28 @@ def test_malformed_lines_return_none():
     assert parse("Failed password") is None
     assert parse("") is None
     assert parse("random garbage without a timestamp") is None
+
+
+def test_iso_failed_ssh_login():
+    result = parse(ISO_FAILED)
+
+    assert result is not None
+    assert result["action"] == "ssh_login"
+    assert result["outcome"] == "failure"
+    assert result["user"] == "root"
+    assert result["src_ip"] == "203.0.113.9"
+    assert result["src_port"] == 52820
+    assert result["dst_port"] == 22
+    assert result["timestamp"] == "2026-10-14T14:24:06Z"
+
+
+def test_iso_sudo_line_is_activity():
+    result = parse(ISO_SUDO)
+
+    assert result is not None
+    assert result["action"] == "sudo"
+    assert result["outcome"] == "activity"
+    assert result["timestamp"] == "2026-10-14T14:24:06Z"
 
 
 def test_repeated_message_summary_is_skipped():

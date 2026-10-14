@@ -9,7 +9,9 @@ Format (rsyslog kern.log):
 Also accepts the two journald forms:
 
 * ``journalctl -o short-iso`` (the log agent's firewall source, task 3.6):
-  ``2026-10-13T09:11:02+0000 host kernel: SOC_DROP: IN=...``
+  ``2026-10-13T09:11:02+0000 host kernel: SOC_DROP: IN=...``.  Newer systemd
+  emits an RFC 3339 offset with a colon (``+00:00``), so both forms are
+  accepted.
 * ``journalctl -o cat``, which carries no timestamp
   (SOC_DROP: IN=...), which then defaults to the current UTC time.
 
@@ -33,8 +35,9 @@ LINE_PATTERN = re.compile(
 )
 
 # journalctl -o short-iso: 2026-10-13T09:11:02+0000 host kernel: SOC_DROP: ...
+# (newer systemd: ...T09:11:02+00:00 -- colon in the offset).
 ISO_PATTERN = re.compile(
-    r'^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}) '
+    r'^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:?\d{2}) '
     r'(?P<kernel_host>\S+) kernel: '
     r'(?P<prefix>SOC_DROP|SOC_ACCEPT|SOC_OUT): '
     r'(?P<payload>.*)$'
