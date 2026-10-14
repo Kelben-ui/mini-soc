@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from mini_soc_config import evidence_dir
+
 from ..database import get_db
 from ..dependencies import get_current_user, require_role
 from ..models.alert import Alert
@@ -269,11 +271,11 @@ def export_alert_events_as_evidence(
         event.raw for event in rows
     ) + "\n"
 
-    evidence_dir = os.getenv("EVIDENCE_DIR", "/var/lib/mini-soc/evidence")
-    os.makedirs(evidence_dir, mode=0o700, exist_ok=True)
+    evidence_path = str(evidence_dir())
+    os.makedirs(evidence_path, mode=0o700, exist_ok=True)
 
     filename = f"alert-{alert_id}-events-{uuid.uuid4().hex}.log"
-    storage_path = os.path.join(evidence_dir, filename)
+    storage_path = os.path.join(evidence_path, filename)
 
     data = content.encode("utf-8")
     file_hash = hashlib.sha256(data).hexdigest()

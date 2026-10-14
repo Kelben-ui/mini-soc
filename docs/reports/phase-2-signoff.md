@@ -4,7 +4,9 @@
 > **Date:** 2026-10-13
 > **Baseline:** branch `main`, HEAD `a8b7607` (Phase 2 landed in `a8b7607`); gap
 > fixes applied on top of this commit
-> **Scope:** Phase 2 tasks owned by M1 and M2 — 2.1, 2.2, 2.3, 2.5, 2.6, 2.7, 2.9
+> **Scope:** Phase 2 tasks for all members — M1/M2 tasks 2.1, 2.2, 2.3, 2.5,
+> 2.6, 2.7, 2.9 in §1-§6, plus **2.4 (M4)**, **2.5 (M5)** and **2.8 (M4+M3)**
+> in the all-member addendum in §7.
 > **Method:** static inspection of the deployment artifacts plus the repeatable
 > checks that run off-box (unit tests, import smoke, contract greps).
 
@@ -16,8 +18,8 @@
 |---|---|---|
 | Collector unit tests | `pytest collector/tests -v` | **31 passed** |
 | Import smoke (CI) | `python -c "import mini_soc_config, collector.main, detection.run, backend.app.main"` | **imports ok** |
-| Unit hardening | `grep` every `deploy/systemd/*.service` | all five have `User=`, `EnvironmentFile=`, `Restart=always`, `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ReadWritePaths=` |
-| Pinned deps | `requirements.txt` + per-service files | root file fully pinned; `collector/`, `backend/`, `detection/` reference it |
+| Unit hardening | `grep` every `deploy/systemd/*.service` | all five have `User=`, `EnvironmentFile=`, `Restart=always`, `ProtectSystem=strict`, `ReadWritePaths=`; **four** have `NoNewPrivileges=yes` — `soc-backend` is the deliberate exception (it runs the sudo-confined `soc-block` helper, task 4.7) |
+| Pinned deps | `requirements.txt` + per-service files | root file fully pinned (16 deps); `collector/`, `backend/`, `detection/` reference it; `agents/log_agent/` and `ids/` pin their own runtimes |
 | Env contract | `.env.example` | all required keys present (see 2.7) |
 | Shell syntax | `bash -n deploy/*.sh` | **not runnable on this Windows host** (WSL has no distro) — CI runs it on `ubuntu-latest` |
 
@@ -78,3 +80,45 @@ the remaining unknowns are runtime checks that need the EC2 host.
 |---|---|---|---|
 | M1 | Deployment / systemd / nginx | Approved | 2026-10-13 |
 | M2 | Requirements / pipeline | Approved | 2026-10-13 |
+
+---
+
+## 7. All-member re-verification (2026-10-14)
+
+§1–§6 covered only the M1/M2-owned tasks and left **2.4 (M4)**, **2.5 (M5)** and
+**2.8 (M4+M3)** out of scope. This addendum closes those gaps for all members,
+re-verified on branch `main` on top of `eab8c4a`, clean working tree.
+
+### 7.1 Verification commands and results
+
+| Check | Command | Result |
+|---|---|---|
+| Combined unit tests | `pytest ids backend collector agents -q` | **86 passed, 1 skipped** |
+| Detection replay (13 rules) | `python detection/tests/replay_test.py` | **REPLAY TEST PASSED** — 13/13 |
+| Migration chain (2.4) | `alembic heads` / `alembic history` | single linear head `b2c3d4e5f6a7`, 6 revisions, `base → head` |
+| Migration DDL (2.4) | `alembic upgrade head` on SQLite | **expected failure** — `588042e3de4c` uses `ALTER COLUMN … SET NOT NULL`, Postgres-only; the migration path is therefore exercised against PostgreSQL (what `install.sh` provisions) |
+| Frontend production build (2.5) | `npm ci && npm run build` | `npm ci` → 0 vulnerabilities; `vite build` → `dist/` (95 modules, 336.82 kB JS / 21.63 kB CSS) |
+| Rules load with no CWD (2.8) | `load_rules()` from `%TEMP%` | **13 rules** — loading no longer depends on the working directory |
+
+### 7.2 All-member task verdicts
+
+| # | Owner | Verdict | Evidence |
+|---|---|---|---|
+| 2.1 | M2–M4 | Pass | Root `requirements.txt` (16 pinned deps); `collector/`, `backend/`, `detection/` are `-r ../requirements.txt`; `agents/log_agent/requirements.txt` and `ids/requirements.txt` pin their own runtimes; `requirements-dev.txt` adds pytest. |
+| 2.4 | M4 | Pass (off-box) | `deploy/postgres.sh`: PGDG repo, `postgresql-16`, `listen_addresses = 'localhost'` (via `conf.d/mini-soc.conf`), role + database parsed from `DATABASE_URL`; `install.sh` runs `alembic upgrade head`. Migration chain is a single linear head. _The on-Postgres migration itself still needs the rehearsal (§7.3)._ |
+| 2.5 | M5+M1 | Pass | `npm ci && npm run build` succeeds → `dist/`; nginx serves `@APP_DIR@/frontend/dist` and proxies `/api` → `127.0.0.1:8000` (no trailing slash); Vite dev binds `127.0.0.1:5173` (no dashboard port exposed on EC2). |
+| 2.8 | M4+M3 | Pass | Backend creates `EVIDENCE_DIR` at startup (`backend/app/main.py`); `alerts.py` now uses the shared `evidence_dir()` helper; `detection/run.py` polls at `DETECTION_POLL_SECONDS` with a checkpoint. **Fixed** the last CWD-relative path: `detection/engine/rule_loader.load_rules()` now defaults to the absolute `RULES_DIR` (falling back to `<repo>/rules`), verified by loading 13 rules from `%TEMP%`. |
+
+### 7.3 Still on-box only
+
+Unchanged from §5: `systemctl status soc-*` after a reboot, a fresh-instance
+`install.sh`/`postgres.sh` run plus `alembic upgrade head` against PostgreSQL, and
+`bash -n` on the deploy scripts (CI does this on `ubuntu-latest`).
+
+### 7.4 All-member sign-off
+
+| Reviewer | Role | Sign-off | Date |
+|---|---|---|---|
+| M3 | Detection rules / replay | Approved | 2026-10-14 |
+| M4 | Backend / database / migrations | Approved | 2026-10-14 |
+| M5 | Frontend / build / nginx | Approved | 2026-10-14 |
