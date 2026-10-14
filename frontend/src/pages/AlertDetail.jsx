@@ -77,7 +77,7 @@ export default function AlertDetail() {
   useEffect(() => {
     if (!lead) return;
     client
-      .get("/users")
+      .get("/api/users")
       .then((res) => setUsers(Array.isArray(res.data) ? res.data : []))
       .catch(() => {});
   }, [lead]);

@@ -9,6 +9,8 @@ const EMPTY_FILTERS = {
   end_time: "",
 };
 
+const PAGE_SIZE = 100;
+
 function toIso(value) {
   if (!value) return undefined;
   return new Date(value).toISOString();
@@ -17,6 +19,8 @@ function toIso(value) {
 export default function EventSearch() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [events, setEvents] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -25,8 +29,7 @@ export default function EventSearch() {
     setFilters((current) => ({ ...current, [name]: value }));
   }
 
-  async function handleSearch(event) {
-    event.preventDefault();
+  async function runSearch(nextOffset) {
     setLoading(true);
     setError("");
 
@@ -38,16 +41,26 @@ export default function EventSearch() {
           log_type: filters.log_type || undefined,
           start_time: toIso(filters.start_time),
           end_time: toIso(filters.end_time),
+          limit: PAGE_SIZE,
+          offset: nextOffset,
         },
       });
 
-      setEvents(Array.isArray(res.data) ? res.data : res.data?.events || []);
+      const payload = res.data || {};
+      setEvents(Array.isArray(res.data) ? res.data : payload.items || []);
+      setTotal(res.data?.total ?? 0);
+      setOffset(nextOffset);
       setSearched(true);
     } catch {
       setError("Could not search events. Check the backend connection.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSearch(event) {
+    event.preventDefault();
+    runSearch(0);
   }
 
   const inputClass =
@@ -100,7 +113,6 @@ export default function EventSearch() {
             className={`mt-1 w-full ${inputClass}`}
           />
         </label>
-
         <div className="flex items-end gap-3">
           <button
             type="submit"
@@ -111,7 +123,14 @@ export default function EventSearch() {
           </button>
           <button
             type="button"
-            onClick={() => setFilters(EMPTY_FILTERS)}
+            onClick={() => {
+              setFilters(EMPTY_FILTERS);
+              setEvents([]);
+              setTotal(0);
+              setOffset(0);
+              setSearched(false);
+              setError("");
+            }}
             className="rounded border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
           >
             Clear
@@ -120,6 +139,12 @@ export default function EventSearch() {
       </form>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {searched && total > 0 && (
+        <p className="text-sm text-slate-400">
+          {`Showing ${offset + 1}–${offset + events.length} of ${total} events.`}
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-slate-800">
         <table className="w-full min-w-[64rem] text-left text-sm">
@@ -167,6 +192,30 @@ export default function EventSearch() {
           </tbody>
         </table>
       </div>
+
+      {searched && total > 0 && (
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            disabled={offset <= 0 || loading}
+            onClick={() => runSearch(Math.max(0, offset - PAGE_SIZE))}
+            className="rounded border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
+          >
+            ← Previous
+          </button>
+          <span className="text-xs text-slate-500">
+            Page {Math.floor(offset / PAGE_SIZE) + 1}
+          </span>
+          <button
+            type="button"
+            disabled={offset + events.length >= total || loading}
+            onClick={() => runSearch(offset + PAGE_SIZE)}
+            className="rounded border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       {events.length > 0 && (
         <details className="rounded-lg border border-slate-800 bg-slate-900 p-4">

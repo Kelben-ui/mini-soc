@@ -13,6 +13,8 @@ from .routers.rules import router as rules_router
 from .routers.stats import router as stats_router
 from .routers.agents import router as agents_router
 from .routers.actions import router as actions_router
+from .routers.chains import router as chains_router
+from .routers.users import router as users_router
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="Mini SOC Platform API",
@@ -45,6 +47,8 @@ app.include_router(rules_router)
 app.include_router(stats_router)
 app.include_router(agents_router)
 app.include_router(actions_router)
+app.include_router(chains_router)
+app.include_router(users_router)
 
 
 @app.on_event("startup")

@@ -21,6 +21,14 @@ router = APIRouter(
 # An agent that has not sent a heartbeat within this window is "offline".
 AGENT_ONLINE_WINDOW_SECONDS = 90
 
+# Alert statuses that are still "active" on the dashboard threat level.
+CLOSED_ALERT_STATUSES = {"RESOLVED", "FALSE POSITIVE", "CLOSED", "FALSE_POSITIVE"}
+
+# Incidents that are still being worked.
+OPEN_INCIDENT_STATUSES = {"open", "investigating", "contained"}
+
+SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
 
 def _as_utc(value):
     if value is None:
@@ -30,6 +38,75 @@ def _as_utc(value):
         return value.replace(tzinfo=timezone.utc)
 
     return value
+
+
+def _severity_counts(raw):
+    """Normalise ``{severity: count}`` to upper-case severities."""
+    return {
+        (severity or "UNKNOWN").upper(): count
+        for severity, count in raw.items()
+    }
+
+
+def _level_from_counts(by_severity):
+    """Return the highest severity present, defaulting to LOW."""
+    for level in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+        if by_severity.get(level, 0) > 0:
+            return level
+
+    return "LOW"
+
+
+def _max_level(*levels):
+    ranked = sorted(
+        (level for level in levels if level),
+        key=lambda level: SEVERITY_RANK.get(level, 0),
+        reverse=True,
+    )
+    return ranked[0] if ranked else "LOW"
+
+
+def _average(values):
+    numbers = [value for value in values if value is not None]
+    if not numbers:
+        return None
+    return round(sum(numbers) / len(numbers), 1)
+
+
+def _response_metrics(db):
+    """Mean TTD/TTC/TTR in seconds (detection-anchored, task 7.8)."""
+    incidents = db.query(Incident).all()
+
+    earliest_rows = (
+        db.query(Alert.incident_id, func.min(Alert.first_seen))
+        .filter(Alert.incident_id.isnot(None))
+        .group_by(Alert.incident_id)
+        .all()
+    )
+    earliest = {incident_id: _as_utc(value) for incident_id, value in earliest_rows}
+
+    ttd, ttc, ttr = [], [], []
+
+    for incident in incidents:
+        created = _as_utc(incident.created_at)
+
+        if created is None:
+            continue
+
+        start = earliest.get(incident.incident_id)
+
+        if start is not None:
+            ttd.append((created - start).total_seconds())
+
+        if incident.contained_at is not None:
+            ttc.append((_as_utc(incident.contained_at) - created).total_seconds())
+
+        resolved = incident.resolved_at or incident.closed_at
+
+        if resolved is not None:
+            ttr.append((_as_utc(resolved) - created).total_seconds())
+
+    return _average(ttd), _average(ttc), _average(ttr)
 
 
 def _agent_health(db):
@@ -127,6 +204,33 @@ def get_stats(
 
     agents, ids_status = _agent_health(db)
 
+    # --- Live threat level (task 7.10) -------------------------------------
+
+    active_alert_rows = (
+        db.query(Alert.severity, func.count(Alert.alert_id))
+        .filter(func.upper(Alert.status).notin_(CLOSED_ALERT_STATUSES))
+        .group_by(Alert.severity)
+        .all()
+    )
+    active_by_severity = _severity_counts(dict(active_alert_rows))
+    active_total = sum(active_by_severity.values())
+
+    open_incident_by_severity = _severity_counts(
+        dict(
+            db.query(Incident.severity, func.count(Incident.incident_id))
+            .filter(func.lower(Incident.status).in_(OPEN_INCIDENT_STATUSES))
+            .group_by(Incident.severity)
+            .all()
+        )
+    )
+
+    threat_level = _max_level(
+        _level_from_counts(active_by_severity) if active_total else None,
+        _level_from_counts(open_incident_by_severity)
+        if open_incident_by_severity
+        else None,
+    )
+
     # --- Dashboard overview extras (task 7.4 / spec §15) -------------------
 
     now = datetime.now(timezone.utc)
@@ -178,14 +282,19 @@ def get_stats(
     open_incidents = db.query(
         func.count(Incident.incident_id)
     ).filter(
-        func.lower(Incident.status).in_(("open", "investigating", "contained"))
+        func.lower(Incident.status).in_(tuple(OPEN_INCIDENT_STATUSES))
     ).scalar()
+
+    mttd, mttc, mttr = _response_metrics(db)
 
     return {
         "total_events": total_events,
         "total_alerts": total_alerts,
         "total_incidents": total_incidents,
         "open_incidents": open_incidents or 0,
+        "threat_level": threat_level,
+        "active_alerts": active_total,
+        "active_alerts_by_severity": active_by_severity,
         "alerts_by_severity": alerts_by_severity,
         "alerts_by_status": alerts_by_status,
         "incidents_by_severity": incidents_by_severity,
@@ -193,6 +302,9 @@ def get_stats(
         "alerts_over_24h": alerts_over_24h,
         "top_source_ips": top_source_ips,
         "top_attack_types": top_attack_types,
+        "mean_time_to_detect_seconds": mttd,
+        "mean_time_to_contain_seconds": mttc,
+        "mean_time_to_resolve_seconds": mttr,
         "agents": agents,
         "agents_online": sum(1 for a in agents if a["status"] == "online"),
         "ids_status": ids_status,

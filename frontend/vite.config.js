@@ -6,6 +6,17 @@ import react from '@vitejs/plugin-react'
 // production. See deploy/nginx/mini-soc.conf.
 export default defineConfig({
   plugins: [react()],
+  // Vitest bundles its own Vite copy, which can compile JSX with the classic
+  // runtime. Pin the automatic runtime explicitly so tests and the build agree.
+  esbuild: {
+    jsx: 'automatic',
+    jsxImportSource: 'react',
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

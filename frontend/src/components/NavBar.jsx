@@ -1,19 +1,26 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { logout, getRole } from "../api/auth";
+import { logout, getRole, isLead } from "../api/auth";
 
 const LINKS = [
   { to: "/", label: "Overview", end: true },
   { to: "/alerts", label: "Alerts" },
   { to: "/incidents", label: "Incidents" },
+  { to: "/chains", label: "Attack Chains" },
   { to: "/events", label: "Event Search" },
   { to: "/rules", label: "Rules" },
+  { to: "/reports", label: "Reports" },
 ];
 
 export default function NavBar() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const role = getRole();
+
+  // GET /api/users requires lead/admin, so only show the link they can use.
+  const links = isLead()
+    ? [...LINKS, { to: "/users", label: "Users" }]
+    : LINKS;
 
   function handleLogout() {
     logout();
@@ -53,7 +60,7 @@ export default function NavBar() {
         </div>
 
         <div className="space-y-1">
-          {LINKS.map((link) => (
+          {links.map((link) => (
             <NavLink
               key={link.to}
               to={link.to}

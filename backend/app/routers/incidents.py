@@ -5,9 +5,12 @@ import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
+from mini_soc_config import evidence_dir
+from ..models.alert import Alert
 from ..models.note import Note
 from ..models.evidence import Evidence
 from ..models.action import Action
+from ..models.user import User
 from ..database import get_db
 from ..dependencies import get_current_user, require_role
 from ..models.incident import Incident
@@ -16,6 +19,7 @@ from ..models.audit_log import AuditLog
 from ..models.custody_log import CustodyLog
 from ..schemas.incident import (
     IncidentCreate,
+    IncidentUpdate,
     NoteCreate,
     EvidenceCreate,
     ActionCreate,
@@ -40,6 +44,83 @@ def esc_list(values):
     if isinstance(values, (list, tuple)):
         return html.escape(", ".join(str(v) for v in values))
     return html.escape(str(values))
+
+
+def _as_utc(value):
+    """Normalize SQLite's naive datetimes so timestamp maths never fails."""
+    if value is None:
+        return None
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+
+    return value
+
+
+def _seconds_between(start, end):
+    start = _as_utc(start)
+    end = _as_utc(end)
+
+    if start is None or end is None:
+        return None
+
+    return int((end - start).total_seconds())
+
+
+def _resolve_actor(user_map, user_id):
+    if user_id is None:
+        return None
+    user = user_map.get(user_id)
+    return user.username if user else f"user {user_id}"
+
+
+def _serialize_incident(db, incident):
+    """Full incident payload shared by the list/detail/report views.
+
+    Response metrics are detection-anchored (spec TTD/TTC/TTR):
+      * TTD = incident created - earliest linked alert first_seen
+      - TTC = contained_at - incident created
+      - TTR = (resolved_at or closed_at) - incident created
+    ``None`` means the timestamp needed for the metric is not available yet.
+    """
+    alerts = (
+        db.query(Alert)
+        .filter(Alert.incident_id == incident.incident_id)
+        .order_by(Alert.first_seen.asc())
+        .all()
+    )
+
+    earliest = min(
+        (_as_utc(a.first_seen) for a in alerts if a.first_seen),
+        default=None,
+    )
+    created = _as_utc(incident.created_at)
+    resolved = incident.resolved_at or incident.closed_at
+
+    return {
+        "incident_id": incident.incident_id,
+        "incident_code": incident.incident_code,
+        "title": incident.title,
+        "description": incident.description,
+        "severity": incident.severity,
+        "status": incident.status,
+        "category": incident.category,
+        "assigned_to": incident.assigned_to,
+        "affected_hosts": incident.affected_hosts,
+        "source_ips": incident.source_ips,
+        "created_at": incident.created_at,
+        "closed_at": incident.closed_at,
+        "contained_at": incident.contained_at,
+        "resolved_at": incident.resolved_at,
+        "root_cause": incident.root_cause,
+        "lessons_learned": incident.lessons_learned,
+        "alert_count": len(alerts),
+        "alert_ids": [a.alert_id for a in alerts],
+        "ttd_seconds": _seconds_between(earliest, created),
+        "ttc_seconds": _seconds_between(created, incident.contained_at),
+        "ttr_seconds": _seconds_between(created, resolved),
+    }
+
 
 @router.get("/incidents")
 def get_incidents(
@@ -112,26 +193,305 @@ def get_incident(
     ).first()
 
     if not incident:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=404,
             detail="Incident not found"
         )
 
-    return {
-        "incident_id": incident.incident_id,
-        "title": incident.title,
-        "description": incident.description,
-        "severity": incident.severity,
-        "status": incident.status,
-        "category": incident.category,
-        "assigned_to": incident.assigned_to,
-        "created_at": incident.created_at,
-        "closed_at": incident.closed_at,
-        "root_cause": incident.root_cause,
-        "lessons_learned": incident.lessons_learned,
-    }
+    return _serialize_incident(db, incident)
+
+
+@router.patch("/incidents/{incident_id}")
+def update_incident(
+    incident_id: int,
+    incident_data: IncidentUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("analyst", "lead", "admin")),
+):
+    """Edit the incident narrative fields (task 7.8).
+
+    Narrative fields (description, category, root cause, lessons learned) are
+    editable by any analyst; re-assignment is restricted to ``lead``/``admin``
+    (spec §5.8).  Every change is written to the audit log.
+    """
+    incident = db.query(Incident).filter(
+        Incident.incident_id == incident_id
+    ).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    changes = incident_data.model_dump(exclude_unset=True)
+
+    if not changes:
+        return _serialize_incident(db, incident)
+
+    if "assigned_to" in incident_data.model_fields_set and current_user.role not in {
+        "lead",
+        "admin",
+    }:
+        raise HTTPException(
+            status_code=403,
+            detail="Only lead or admin can change the assignee",
+        )
+
+    if "assigned_to" in incident_data.model_fields_set and incident_data.assigned_to:
+        assignee = db.query(User).filter(
+            User.id == incident_data.assigned_to
+        ).first()
+
+        if not assignee:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    fields = ("description", "category", "assigned_to", "root_cause", "lessons_learned")
+    changes_made = []
+
+    for field in fields:
+        if field not in changes:
+            continue
+
+        old_value = getattr(incident, field)
+        new_value = changes[field]
+
+        if old_value == new_value:
+            continue
+
+        setattr(incident, field, new_value)
+        changes_made.append(f"{field}: {old_value!r} -> {new_value!r}")
+
+    if changes_made:
+        audit = AuditLog(
+            user_id=current_user.id,
+            action="incident_updated",
+            resource_type="incident",
+            resource_id=str(incident.incident_id),
+            details="; ".join(changes_made),
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(audit)
+
+    db.commit()
+    db.refresh(incident)
+
+    return _serialize_incident(db, incident)
+
+
+@router.get("/incidents/{incident_id}/notes")
+def get_notes(
+    incident_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("analyst", "lead", "admin"))
+):
+    incident = db.query(Incident).filter(
+        Incident.incident_id == incident_id
+    ).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    notes = (
+        db.query(Note)
+        .filter(Note.incident_id == incident_id)
+        .order_by(Note.created_at.asc(), Note.id.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": note.id,
+            "incident_id": note.incident_id,
+            "author": note.author,
+            "body": note.body,
+            "created_at": note.created_at,
+        }
+        for note in notes
+    ]
+
+
+@router.get("/incidents/{incident_id}/evidence")
+def get_evidence(
+    incident_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("analyst", "lead", "admin"))
+):
+    incident = db.query(Incident).filter(
+        Incident.incident_id == incident_id
+    ).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    evidence_items = (
+        db.query(Evidence)
+        .filter(Evidence.incident_id == incident_id)
+        .order_by(Evidence.uploaded_at.asc(), Evidence.id.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": item.id,
+            "incident_id": item.incident_id,
+            "filename": item.filename,
+            "type": item.type,
+            "sha256": item.sha256,
+            "size_bytes": item.size_bytes,
+            "uploaded_by": item.uploaded_by,
+            "uploaded_at": item.uploaded_at,
+        }
+        for item in evidence_items
+    ]
+
+
+@router.get("/evidence/{evidence_id}/custody")
+def get_custody(
+    evidence_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("analyst", "lead", "admin"))
+):
+    evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    entries = (
+        db.query(CustodyLog)
+        .filter(CustodyLog.evidence_id == evidence_id)
+        .order_by(CustodyLog.timestamp.asc(), CustodyLog.id.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": entry.id,
+            "evidence_id": entry.evidence_id,
+            "user_id": entry.user_id,
+            "action": entry.action,
+            "timestamp": entry.timestamp,
+            "notes": entry.notes,
+        }
+        for entry in entries
+    ]
+
+
+@router.get("/incidents/{incident_id}/timeline")
+def get_timeline(
+    incident_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("analyst", "lead", "admin"))
+):
+    """Merge status changes, notes, evidence, custody and actions (spec §5.6)."""
+    incident = db.query(Incident).filter(
+        Incident.incident_id == incident_id
+    ).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    history = (
+        db.query(IncidentStatusHistory)
+        .filter(IncidentStatusHistory.incident_id == incident_id)
+        .all()
+    )
+    notes = db.query(Note).filter(Note.incident_id == incident_id).all()
+    evidence_items = (
+        db.query(Evidence).filter(Evidence.incident_id == incident_id).all()
+    )
+    actions = db.query(Action).filter(Action.incident_id == incident_id).all()
+
+    evidence_ids = [item.id for item in evidence_items]
+    custody_entries = (
+        db.query(CustodyLog)
+        .filter(CustodyLog.evidence_id.in_(evidence_ids))
+        .all()
+        if evidence_ids
+        else []
+    )
+
+    user_ids = (
+        {entry.changed_by for entry in history}
+        | {note.author for note in notes}
+        | {item.uploaded_by for item in evidence_items}
+        | {entry.user_id for entry in custody_entries}
+        | {action.performed_by for action in actions}
+    )
+
+    user_map = {}
+    if user_ids:
+        for user in db.query(User).filter(User.id.in_(user_ids)).all():
+            user_map[user.id] = user
+
+    items = []
+
+    for entry in history:
+        items.append(
+            {
+                "type": "status",
+                "timestamp": entry.changed_at,
+                "actor": user_map.get(entry.changed_by).username
+                if entry.changed_by in user_map
+                else None,
+                "summary": f"Status changed {entry.old_status} -> {entry.new_status}",
+                "details": entry.comment,
+            }
+        )
+
+    for note in notes:
+        items.append(
+            {
+                "type": "note",
+                "timestamp": note.created_at,
+                "actor": user_map.get(note.author).username
+                if note.author in user_map
+                else None,
+                "summary": "Investigation note added",
+                "details": note.body,
+            }
+        )
+
+    for item in evidence_items:
+        items.append(
+            {
+                "type": "evidence",
+                "timestamp": item.uploaded_at,
+                "actor": user_map.get(item.uploaded_by).username
+                if item.uploaded_by in user_map
+                else None,
+                "summary": f"Evidence uploaded: {item.filename}",
+                "details": item.sha256,
+            }
+        )
+
+    for entry in custody_entries:
+        items.append(
+            {
+                "type": "custody",
+                "timestamp": entry.timestamp,
+                "actor": user_map.get(entry.user_id).username
+                if entry.user_id in user_map
+                else None,
+                "summary": f"Evidence custody: {entry.action}",
+                "details": entry.notes,
+            }
+        )
+
+    for action in actions:
+        items.append(
+            {
+                "type": "action",
+                "timestamp": action.performed_at,
+                "actor": user_map.get(action.performed_by).username
+                if action.performed_by in user_map
+                else None,
+                "summary": f"Response action: {action.action_type} -> {action.target}",
+                "details": action.result,
+            }
+        )
+
+    items.sort(key=lambda item: _as_utc(item["timestamp"]) or datetime.min.replace(tzinfo=timezone.utc))
+
+    return {"incident_id": incident_id, "items": items}
+
 
 @router.post("/incidents/{incident_id}/notes")
 def add_note(
@@ -198,10 +558,10 @@ async def add_evidence(
 
     evidence_id = uuid.uuid4().hex
     storage_filename = f"{evidence_id}_{safe_filename}"
-    storage_path = os.path.join(
-        "/var/lib/mini-soc/evidence",
-        storage_filename
-    )
+
+    storage_dir = str(evidence_dir())
+    os.makedirs(storage_dir, mode=0o700, exist_ok=True)
+    storage_path = os.path.join(storage_dir, storage_filename)
 
     sha256 = hashlib.sha256()
     size_bytes = 0
@@ -606,11 +966,21 @@ def update_incident_status(
             detail="Only lead or admin can close incidents"
         )
 
+    now = datetime.now(timezone.utc)
+
     old_status = incident.status
     incident.status = new_status
 
+    # Response-time metrics (task 7.8): stamp the transition timestamps so the
+    # dashboard can render TTC/TTR.  ``closed_at`` keeps its existing meaning.
+    if new_status == "contained" and incident.contained_at is None:
+        incident.contained_at = now
+
+    if new_status == "resolved" and incident.resolved_at is None:
+        incident.resolved_at = now
+
     if new_status == "closed":
-        incident.closed_at = datetime.now(timezone.utc)
+        incident.closed_at = now
 
     history = IncidentStatusHistory(
         incident_id=incident.incident_id,
@@ -643,6 +1013,8 @@ def update_incident_status(
         "incident_code": incident.incident_code,
         "status": incident.status,
         "closed_at": incident.closed_at,
+        "contained_at": incident.contained_at,
+        "resolved_at": incident.resolved_at,
         "changed_by": current_user.id,
         "comment": status_data.comment,
     }

@@ -21,6 +21,8 @@ def get_events(
     log_type: str | None = Query(default=None),
     start_time: datetime | None = Query(default=None),
     end_time: datetime | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
@@ -41,24 +43,36 @@ def get_events(
     if end_time:
         query = query.filter(Event.timestamp <= end_time)
 
-    events = query.order_by(Event.timestamp.desc()).all()
+    total = query.count()
 
-    return [
-        {
-            "event_id": event.event_id,
-            "timestamp": event.timestamp,
-            "host": event.host,
-            "log_type": event.log_type,
-            "category": event.category,
-            "action": event.action,
-            "src_ip": event.src_ip,
-            "src_port": event.src_port,
-            "dst_ip": event.dst_ip,
-            "dst_port": event.dst_port,
-            "user": event.user,
-            "outcome": event.outcome,
-            "details": event.details,
-            "raw": event.raw,
-        }
-        for event in events
-    ]
+    events = (
+        query.order_by(Event.timestamp.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "event_id": event.event_id,
+                "timestamp": event.timestamp,
+                "host": event.host,
+                "log_type": event.log_type,
+                "category": event.category,
+                "action": event.action,
+                "src_ip": event.src_ip,
+                "src_port": event.src_port,
+                "dst_ip": event.dst_ip,
+                "dst_port": event.dst_port,
+                "user": event.user,
+                "outcome": event.outcome,
+                "details": event.details,
+                "raw": event.raw,
+            }
+            for event in events
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }

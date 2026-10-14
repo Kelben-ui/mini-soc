@@ -30,6 +30,14 @@ class IncidentResponse(BaseModel):
     lessons_learned: str | None
 
 
+class IncidentUpdate(BaseModel):
+    description: str | None = None
+    category: str | None = Field(default=None, max_length=100)
+    assigned_to: int | None = None
+    root_cause: str | None = None
+    lessons_learned: str | None = None
+
+
 class IncidentStatusUpdate(BaseModel):
     status: str = Field(min_length=1, max_length=30)
     comment: str = Field(min_length=1)
