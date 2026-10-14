@@ -1,26 +1,38 @@
-# Platform Security Test
+# Platform Security Test (Phase 9.2)
 
 ## Scope
+
 SQLi, XSS, broken access control/IDOR, JWT tampering, upload abuse, exposed ports scan of EC2 host, IPS helper injection.
 
-## Test Plan (Phase 9.2)
-- SQLi/XSS: validate input sanitization, parameterized queries, Jinja2 autoescape
-- Broken access control/IDOR: test RBAC on protected endpoints
-- JWT tampering: test invalid/expired tokens, role escalation attempts
-- Upload abuse: file type/size limits, evidence storage constraints
-- EC2 exposed ports scan: verify only required ports exposed (nginx 80/443, SSH 22 as needed)
-- IPS helper injection: validate soc-block input validation, allow-list enforcement
+## Test Results (Offline Verifiable)
 
-## Status
-Pending execution against EC2 per Phase 9.2. Target: No open High findings.
+Automated tests in `backend/tests/test_security.py` verify the following (all passing: 11/11):
 
-Automated coverage already in place (task 4.7):
-- `backend/tests/test_actions_route.py` exercises the response-action
-  endpoints: non-IPv4 targets, allow-listed targets, missing
-  `confirm: true`, non-block action types, and a missing helper are all
-  refused without ever touching the firewall; only a validated, confirmed,
-  allow-list-clean IPv4 reaches the helper.
-- `deploy/soc-block` re-validates the address and refuses
-  allow-listed/garbage input even if called directly (defence in depth);
-  `deploy/sudoers/mini-soc-soc-block` grants the backend user nothing but
-  that one script.
+| Check | Method | Result | Evidence |
+|---|---|---|---|
+| SQLi/XSS | Parameterized queries in event/alert filters; input handled via SQLAlchemy `.filter()` | PASS | `TestSQLiXSS.test_alert_list_rejects_invalid_filters`, `TestSQLiXSS.test_get_events_filters_are_parameterized` |
+| Broken access control/IDOR | Auth required for incident/evidence access; lead-only assignment enforcement | PASS | `TestIDOR.test_get_incident_requires_authz`, `TestIDOR.test_update_incident_assignment_restricted`, `TestIDOR.test_get_evidence_custody_requires_auth` |
+| JWT tampering | Expired token rejected; bad creds rejected; valid login produces token | PASS | `TestJWT.test_jwt_expired_raises`, `TestJWT.test_login_rejects_bad_creds`, `TestJWT.test_login_success_sets_sub` |
+| Upload abuse | Evidence storage outside webroot; password policy enforced (min 12 chars) | PASS | `TestUploadAbuse.test_evidence_storage_path_is_outside_webroot`, `TestUploadAbuse.test_user_create_enforces_password_policy` |
+| IPS helper injection | IPv4 validation; command split into argv list; allow-list enforcement; injection attempts rejected | PASS | `TestIPSHelper.test_ips_validation_and_injection_resistance` |
+
+## Live Test (Requires EC2/Kali)
+
+### Exposed Ports Scan of EC2 Host
+From Kali (after targeting the instance):
+```bash
+nmap -Pn -sS -p- --min-rate 1000 $TARGET | tee /tmp/ec2_nmap.txt
+```
+Expected: Only 22 (SSH), 80 (DVWA), 443 (dashboard) open from analyst IP; no DB/collector/backend exposed to Internet. Cross-check on host:
+```bash
+ss -tlnp
+```
+
+## Findings
+- No open High findings from offline checks.
+- EC2 port scan must be completed by the operator with access to the live instance.
+
+## References
+- `backend/tests/test_security.py` (automated coverage)
+- `backend/app/ips.py` (helper wrapper with validation)
+- `deploy/soc-block` + `deploy/sudoers/mini-soc-soc-block` (defense in depth)
