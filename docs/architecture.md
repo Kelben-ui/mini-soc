@@ -22,6 +22,11 @@ It consists of:
 6. Backend API
 7. Dashboard
 
+![Mini SOC architecture](images/architecture.png)
+
+*Editable source: `docs/images/architecture.drawio`; regenerate the PNG with
+`python docs/images/render_architecture.py`.*
+
 ## 2. Deviations from the reference specification
 
 This implementation differs from the original project specification
@@ -204,9 +209,9 @@ The canonical layout (created by `deploy/install.sh`):
   EC2 instance's **public IP** over the real internet. This means:
   - `src_ip` in alerts is the attacker's real public IP (dynamic, likely NATed),
     not a clean lab IP.
-  - The false-positive demo with an "approved second IP" needs a substitute
-    source (e.g. a phone hotspot or VPN) — record the choice in
-    `docs/testing/` when rehearsed.
+  - The false-positive demo needs a second, controlled source; the choice
+    (a phone hotspot) and the method are recorded in
+    `docs/testing/second-source-ip.md`.
   - The box is reachable by real internet background scanning once 22/80 are
     open, which may add unrelated alerts during testing.
 - **Time sync**: EC2 instances sync via the Amazon Time Sync Service by default —

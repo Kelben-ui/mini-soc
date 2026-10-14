@@ -1,0 +1,12 @@
+# LAB USE ONLY — copy to target.conf and set ALLOWED_TARGET to your own EC2
+# instance's public IP (or Elastic IP).
+#
+#   cp target.conf.example target.conf
+#   $EDITOR target.conf          # set ALLOWED_TARGET below
+#
+# target.conf is gitignored on purpose: the instance's public IP changes on
+# every restart unless an Elastic IP is attached, so a committed file goes
+# stale immediately and could point at someone else's host.
+
+# The ONLY host the attack-sim scripts may run against.
+ALLOWED_TARGET="203.0.113.10"

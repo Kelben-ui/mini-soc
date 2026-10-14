@@ -44,8 +44,8 @@ instead of a CIDR range.
 2. Make scripts executable:
 
    ```bash
-   chmod +x port-scan.sh ssh-bruteforce.sh web-attacks.sh recon-chain.sh \
-            outbound-conn.sh dns-tunnel-sim.sh
+   chmod +x port-scan.sh ssh-brute-force.sh sqli-xss.sh scanner-ua.sh \
+            recon-chain.sh outbound-conn.sh dns-tunnel-sim.sh
    ```
 
 3. Create a password list for the brute-force script (never reuse these
@@ -73,7 +73,7 @@ fast timing.
 sudo ./port-scan.sh <EC2_PUBLIC_IP>
 ```
 
-### `ssh-bruteforce.sh`
+### `ssh-brute-force.sh`
 Runs Hydra against SSH with a fixed username and password list. Stops on
 first success (`-f`). Triggers the SSH brute-force rule (≥10 failures in
 5 minutes) and, if the real password is reached, the login-success-after-
@@ -82,16 +82,25 @@ brute-force detection and iptables block — if it blocks your source
 mid-test, you may need to clear that rule before re-running.
 
 ```bash
-./ssh-bruteforce.sh <EC2_PUBLIC_IP> testuser passlist.txt
+./ssh-brute-force.sh <EC2_PUBLIC_IP> testuser passlist.txt
 ```
 
-### `web-attacks.sh`
+### `sqli-xss.sh`
 Sends attack payloads to DVWA on the target. Supports individual attack
 types or `all`.
 
 ```bash
-./web-attacks.sh <EC2_PUBLIC_IP> sqli
-./web-attacks.sh <EC2_PUBLIC_IP> all
+./sqli-xss.sh <EC2_PUBLIC_IP> sqli
+./sqli-xss.sh <EC2_PUBLIC_IP> all
+```
+
+### `scanner-ua.sh`
+Sends requests with the User-Agents used by sqlmap / Nikto / Nmap / Gobuster.
+This is what trips `scanner_user_agent` (WEB-SCAN-001) — the rule matches the
+`User-Agent` string, so no valid exploit is needed.
+
+```bash
+./scanner-ua.sh <EC2_PUBLIC_IP>
 ```
 
 Attack types: `sqli`, `xss`, `cmdi`, `traversal`, `bruteforce`.
@@ -137,11 +146,21 @@ Both scripts expect the query/connection to fail (the destination is a
 reserved address / non-existent domain) — that is fine, the packet has
 already left the host and been logged before it fails.
 
+### HTTP flood — replay only, no script
+
+`http_flood` (WEB-FLOOD-001) fires on ≥301 requests from one source within
+60 seconds. There is deliberately **no** attack-sim script for it: sending
+that volume from a laptop to an internet-facing EC2 instance is exactly the
+kind of sustained/DoS-shaped traffic AWS restricts. It is a rate threshold
+rather than a payload, so it is covered by the replay suite
+(`detection/tests/replay_test.py`) and the synthetic nginx log in
+`sample-data/`, which push >300 requests through the same rule.
+
 ## Known gaps / to confirm
 
 - [ ] Exact DVWA vulnerability page paths (can vary by DVWA version)
 - [ ] Whether DVWA session cookies / CSRF tokens need to be handled in
-      `web-attacks.sh`
+      `sqli-xss.sh`
 - [ ] Confirm sshd config on the instance has no rate-limiting or
       fail2ban that would throttle the brute-force test (separate from
       `live_ids_ips.py`'s own intentional blocking)
@@ -150,9 +169,9 @@ already left the host and been logged before it fails.
 - [ ] Confirm timing (`-T4` on Nmap, sleep gaps in recon-chain) against
       the real internet path to AWS — adjust if latency is higher than
       a local lab would have been
-- [ ] Decide and document the second-source-IP method for the
+- [x] Decide and document the second-source-IP method for the
       false-positive demo step (hotspot, VPN, or similar) — see
-      `docs/architecture.md` Section 4
+      `docs/testing/second-source-ip.md`
 - [ ] Confirm whether `target.conf` should instead read an Elastic IP,
       to avoid updating it every time the instance restarts
 

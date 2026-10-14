@@ -42,17 +42,17 @@ address as in earlier drafts of the attack-sim scripts. See
 
 | # | Rule ID | Test scenario | Script used | Expected alert (severity) | Actual result | Pass/Fail |
 |---|---|---|---|---|---|---|
-| 1 | SSH brute force | ≥10 failed SSH logins, same src_ip, 5 min | `ssh-bruteforce.sh $TARGET testuser passlist.txt` | HIGH | | |
+| 1 | SSH brute force | ≥10 failed SSH logins, same src_ip, 5 min | `ssh-brute-force.sh $TARGET testuser passlist.txt` | HIGH | | |
 | 2 | Login success after brute force | Success from an IP with an open brute-force alert | Same run as #1 (passlist ends with real password) | CRITICAL | | |
-| 3 | Web login brute force | ≥20 POSTs to DVWA login, same src_ip, 2 min | `web-attacks.sh $TARGET bruteforce` | HIGH | | |
-| 4 | SQL injection | Decoded URI/body matches SQLi pattern | `web-attacks.sh $TARGET sqli` | HIGH | | |
-| 5 | Cross-site scripting | `<script`, event handler, or `javascript:` in URI/body | `web-attacks.sh $TARGET xss` | MEDIUM | | |
-| 6 | Command injection | `;`, `\|`, `&&` + shell command on DVWA exec page | `web-attacks.sh $TARGET cmdi` | HIGH | | |
-| 7 | Directory traversal / LFI | `../`, `/etc/passwd`, `php://` in parameters | `web-attacks.sh $TARGET traversal` | HIGH | | |
-| 8 | Scanner user agent | sqlmap/nikto/nmap/gobuster in User-Agent | [FILL IN: not yet in web-attacks.sh — add a curl call with `-A "sqlmap/1.8"` as a new case] | MEDIUM | | |
-| 9 | HTTP flood | >300 requests, same src_ip, 1 min | [FILL IN: not yet scripted — add a loop sending >300 rapid GETs. Note: against a real internet-facing EC2 instance, be conservative here — this can resemble a DoS test, which AWS restricts. Keep it brief and well under any sustained-flood threshold.] | MEDIUM | | |
+| 3 | Web login brute force | ≥20 POSTs to DVWA login, same src_ip, 2 min | `sqli-xss.sh $TARGET bruteforce` | HIGH | | |
+| 4 | SQL injection | Decoded URI/body matches SQLi pattern | `sqli-xss.sh $TARGET sqli` | HIGH | | |
+| 5 | Cross-site scripting | `<script`, event handler, or `javascript:` in URI/body | `sqli-xss.sh $TARGET xss` | MEDIUM | | |
+| 6 | Command injection | `;`, `\|`, `&&` + shell command on DVWA exec page | `sqli-xss.sh $TARGET cmdi` | HIGH | | |
+| 7 | Directory traversal / LFI | `../`, `/etc/passwd`, `php://` in parameters | `sqli-xss.sh $TARGET traversal` | HIGH | | |
+| 8 | Scanner user agent | sqlmap/nikto/nmap/gobuster in User-Agent | `scanner-ua.sh $TARGET` | MEDIUM | | |
+| 9 | HTTP flood | >300 requests, same src_ip, 1 min | Replay only — no live script (AWS restricts sustained/DoS-shaped traffic). `detection/tests/replay_test.py` + `sample-data/` drive the same threshold. | MEDIUM | | |
 | 10 | Port scan | ≥20 distinct dest ports, same src_ip, 1 min | `port-scan.sh $TARGET` | MEDIUM | | |
-| 11 | IDS signature (custom IDS) | Any alert from `ids/live_ids_ips.py`; severity mapped from the signature | `port-scan.sh $TARGET` or `ssh-bruteforce.sh …` (both feed the IDS) | Mapped | | |
+| 11 | IDS signature (custom IDS) | Any alert from `ids/live_ids_ips.py`; severity mapped from the signature | `port-scan.sh $TARGET` or `ssh-brute-force.sh …` (both feed the IDS) | Mapped | | |
 | 12 | Unusual outbound connection | Server opens connection to a port not on the allow-list | `outbound-conn.sh <dest_ip> <port>` — run **on the instance**, not from Kali | MEDIUM | | |
 | 13 | Unusual DNS activity | Over-long subdomain (or high query rate) from the host | `dns-tunnel-sim.sh` — run **on the instance**, not from Kali | LOW | | |
 
@@ -81,7 +81,7 @@ they no longer depend on Suricata or a separate firewall host.
 
 | Test | Expected result | Actual | Pass/Fail |
 |---|---|---|---|
-| Run `ssh-bruteforce.sh` twice in a row against the same target within the 5-min window | Second run updates the **same** open alert's `count` and `last_seen`, does not create a new alert | | |
+| Run `ssh-brute-force.sh` twice in a row against the same target within the 5-min window | Second run updates the **same** open alert's `count` and `last_seen`, does not create a new alert | | |
 
 ## Correlation test
 
@@ -107,13 +107,28 @@ step (task 4.7). Test it end to end:
 [FILL IN as testing proceeds — log any rule that consistently fails,
 false-positives, or needs threshold tuning, with the date and rule ID.]
 
-## Attack-sim coverage gaps
+## Attack-sim coverage
 
-The following rules have no attack-sim script yet (see `[FILL IN]`
-markers above) and need scripts added before they can be tested:
-- Scanner user agent
-- HTTP flood
+Every rule now has a trigger path:
 
-Resolved for the IDS-sourced rules: `outbound-conn.sh` (#12) and
-`dns-tunnel-sim.sh` (#13) now exist, and the IDS-signature rule (#11) is
-exercised by the existing `port-scan.sh` / `ssh-bruteforce.sh` runs.
+| Rule | Trigger |
+|---|---|
+| SSH brute force / login success | `ssh-brute-force.sh` |
+| Web login brute force | `sqli-xss.sh $TARGET bruteforce` |
+| SQLi / XSS / cmd injection / traversal | `sqli-xss.sh $TARGET <type>` |
+| Scanner user agent | `scanner-ua.sh` |
+| HTTP flood | replay only (`detection/tests/replay_test.py`) |
+| Port scan / IDS signature | `port-scan.sh` |
+| Unusual outbound | `outbound-conn.sh` (on the instance) |
+| Unusual DNS | `dns-tunnel-sim.sh` (on the instance) |
+
+HTTP flood deliberately has no live script: against an internet-facing
+EC2 instance a >300/min burst resembles the DoS traffic AWS restricts.
+It is a rate threshold with no payload, so the replay suite and
+`sample-data/` cover it. The two host-originated rules (#12, #13) run
+`outbound-conn.sh` / `dns-tunnel-sim.sh` on the instance itself, since
+the IDS watches the host's own `SOC_OUT:` journal lines and DNS
+queries rather than inbound Kali traffic.
+
+Before each session, run the pre-flight checks in
+`docs/testing/pre-session-checklist.md`.

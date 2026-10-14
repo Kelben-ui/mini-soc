@@ -25,14 +25,14 @@ echo "[1/4] Port scan..."
 sleep 5
 
 echo "[2/4] SQL injection..."
-"$SCRIPT_DIR/web-attacks.sh" "$TARGET" sqli
+"$SCRIPT_DIR/sqli-xss.sh" "$TARGET" sqli
 sleep 5
 
 echo "[3/4] XSS..."
-"$SCRIPT_DIR/web-attacks.sh" "$TARGET" xss
+"$SCRIPT_DIR/sqli-xss.sh" "$TARGET" xss
 sleep 5
 
 echo "[4/4] SSH brute force..."
-"$SCRIPT_DIR/ssh-bruteforce.sh" "$TARGET" testuser "$SCRIPT_DIR/passlist.txt"
+"$SCRIPT_DIR/ssh-brute-force.sh" "$TARGET" testuser "$SCRIPT_DIR/passlist.txt"
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | recon-chain END | target=$TARGET" >> "$LOGFILE"

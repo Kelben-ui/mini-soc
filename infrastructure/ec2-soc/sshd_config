@@ -1,0 +1,41 @@
+# Original path: /etc/ssh/sshd_config
+#
+# OpenSSH server config for the Mini SOC instance. SSH is the attack target
+# for the brute-force / login-success rules, so password auth stays on for
+# the throwaway `testuser` account — while root and keyboard-interactive
+# auth are disabled. `deploy/install.sh` does not manage this file; it is the
+# OpenSSH default with the changes below applied (see docs/lab-setup.md).
+
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Package-provided overrides (Ubuntu ships /etc/ssh/sshd_config.d/).
+Include /etc/ssh/sshd_config.d/*.conf
+
+# Never log in as root.
+PermitRootLogin no
+
+# Key-first, but password auth must stay enabled: the SSH brute-force test
+# legitimately logs in as testuser with a weak password.
+PubkeyAuthentication yes
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM yes
+
+MaxAuthTries 6
+LoginGraceTime 30
+
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+
+Subsystem sftp /usr/lib/openssh/sftp-server
+
+# The only interactive accounts.
+AllowUsers ubuntu testuser

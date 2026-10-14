@@ -53,3 +53,8 @@ frontend/dist/
 *.final.bak
 *.before_normalization
 *~
+
+# Attack-sim: copied from target.conf.example, never commit a real target IP;
+# attack-log.txt is the run-time evidence trail.
+attack-sim/target.conf
+attack-sim/attack-log.txt

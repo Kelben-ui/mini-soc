@@ -1,6 +1,6 @@
 #!/bin/bash
 # LAB USE ONLY - target must match attack-sim/target.conf (your own EC2 instance)
-# Usage: ./web-attacks.sh <target_ip> <attack_type>
+# Usage: ./sqli-xss.sh <target_ip> <attack_type>
 # attack_type: sqli | xss | cmdi | traversal | bruteforce | all
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +23,7 @@ fi
 BASE="http://$TARGET/dvwa/vulnerabilities"
 
 log() {
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | web-attack:$1 | target=$TARGET | user=$(whoami)" >> "$LOGFILE"
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | sqli-xss:$1 | target=$TARGET | operator=$(whoami)" >> "$LOGFILE"
 }
 
 run_sqli() {
@@ -63,5 +63,5 @@ case "$ATTACK" in
     traversal) run_traversal ;;
     bruteforce) run_bruteforce ;;
     all) run_sqli; run_xss; run_cmdi; run_traversal; run_bruteforce ;;
-    *) echo "Usage: ./web-attacks.sh <target_ip> {sqli|xss|cmdi|traversal|bruteforce|all}"; exit 1 ;;
+    *) echo "Usage: ./sqli-xss.sh <target_ip> {sqli|xss|cmdi|traversal|bruteforce|all}"; exit 1 ;;
 esac

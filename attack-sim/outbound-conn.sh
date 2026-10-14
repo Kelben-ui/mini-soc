@@ -1,7 +1,7 @@
 #!/bin/bash
 # LAB USE ONLY - triggers the Mini SOC "unusual outbound connection" detection.
 #
-# Unlike port-scan.sh / ssh-bruteforce.sh (which run from Kali against the
+# Unlike port-scan.sh / ssh-brute-force.sh (which run from Kali against the
 # instance), this script runs ON the EC2 instance itself: the SOC_OUT nftables
 # rule only logs connections the host initiates, and unusual_outbound
 # (NET-OUTBOUND-001) fires on new outbound connections to a port outside the

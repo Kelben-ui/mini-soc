@@ -95,7 +95,13 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md).
+![Mini SOC system architecture](docs/images/architecture.png)
+
+Editable source: [`docs/images/architecture.drawio`](docs/images/architecture.drawio);
+regenerate the PNG with `python docs/images/render_architecture.py`. The
+single-EC2 layout (attackers → Security Group → nftables → exposed services →
+collector/detection → PostgreSQL → dashboard) is described in full in
+[docs/architecture.md](docs/architecture.md).
 
 ## Deviations from Original Design
 
