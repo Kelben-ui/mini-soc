@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
-import "./styles/app.css";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+} from "react-router-dom";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import NavBar from "./components/NavBar";
@@ -23,22 +28,34 @@ function Shell() {
 
   useEffect(() => {
     if (!isLoggedIn()) return;
+
+    let cancelled = false;
+
     function fetchAlerts() {
-      getAlerts().then((res) => {
-        setAlerts(Array.isArray(res.data) ? res.data : res.data.alerts || []);
-      }).catch(() => {});
+      getAlerts({ limit: 100 })
+        .then((res) => {
+          if (cancelled) return;
+          setAlerts(res.data?.items || []);
+        })
+        .catch(() => {});
     }
+
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 8000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   return (
-    <div className="app-shell">
+    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100 md:flex-row">
       <NavBar />
-      <div>
+      <div className="flex min-w-0 flex-1 flex-col">
         <SeverityBanner alerts={alerts} />
-        <div className="main"><Outlet /></div>
+        <main className="flex-1 p-4 md:p-6">
+          <Outlet />
+        </main>
       </div>
     </div>
   );
@@ -50,7 +67,14 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
 
-         <Route path="/"  element={<ProtectedRoute><Shell /></ProtectedRoute>}>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Shell />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<Overview />} />
           <Route path="/alerts" element={<AlertsList />} />
           <Route path="/alerts/:id" element={<AlertDetail />} />

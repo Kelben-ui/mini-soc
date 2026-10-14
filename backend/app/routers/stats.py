@@ -127,14 +127,72 @@ def get_stats(
 
     agents, ids_status = _agent_health(db)
 
+    # --- Dashboard overview extras (task 7.4 / spec §15) -------------------
+
+    now = datetime.now(timezone.utc)
+
+    # Alerts per hour over the last 24 hours, as a Recharts-friendly series.
+    buckets = {}
+
+    for (last_seen,) in db.query(Alert.last_seen).filter(
+        Alert.last_seen >= now - timedelta(hours=24)
+    ).all():
+        if last_seen is None:
+            continue
+
+        seen = _as_utc(last_seen)
+        hour = seen.replace(minute=0, second=0, microsecond=0)
+        buckets[hour] = buckets.get(hour, 0) + 1
+
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+    first_hour = current_hour - timedelta(hours=23)
+
+    alerts_over_24h = []
+
+    for i in range(24):
+        hour = first_hour + timedelta(hours=i)
+        alerts_over_24h.append(
+            {"hour": hour.isoformat(), "count": buckets.get(hour, 0)}
+        )
+
+    top_source_ips = [
+        {"src_ip": ip, "count": count}
+        for ip, count in db.query(Alert.src_ip, func.count(Alert.alert_id))
+        .filter(Alert.src_ip.isnot(None))
+        .group_by(Alert.src_ip)
+        .order_by(func.count(Alert.alert_id).desc())
+        .limit(5)
+        .all()
+    ]
+
+    top_attack_types = [
+        {"type": attack_type, "count": count}
+        for attack_type, count in db.query(Alert.category, func.count(Alert.alert_id))
+        .filter(Alert.category.isnot(None))
+        .group_by(Alert.category)
+        .order_by(func.count(Alert.alert_id).desc())
+        .limit(5)
+        .all()
+    ]
+
+    open_incidents = db.query(
+        func.count(Incident.incident_id)
+    ).filter(
+        func.lower(Incident.status).in_(("open", "investigating", "contained"))
+    ).scalar()
+
     return {
         "total_events": total_events,
         "total_alerts": total_alerts,
         "total_incidents": total_incidents,
+        "open_incidents": open_incidents or 0,
         "alerts_by_severity": alerts_by_severity,
         "alerts_by_status": alerts_by_status,
         "incidents_by_severity": incidents_by_severity,
         "incidents_by_status": incidents_by_status,
+        "alerts_over_24h": alerts_over_24h,
+        "top_source_ips": top_source_ips,
+        "top_attack_types": top_attack_types,
         "agents": agents,
         "agents_online": sum(1 for a in agents if a["status"] == "online"),
         "ids_status": ids_status,

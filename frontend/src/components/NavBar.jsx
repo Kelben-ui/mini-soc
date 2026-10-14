@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { logout, getRole } from "../api/auth";
 
@@ -11,6 +12,7 @@ const LINKS = [
 
 export default function NavBar() {
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const role = getRole();
 
   function handleLogout() {
@@ -18,25 +20,65 @@ export default function NavBar() {
     navigate("/login");
   }
 
+  const linkClass = ({ isActive }) =>
+    "block rounded px-3 py-2 text-sm font-medium transition " +
+    (isActive
+      ? "bg-slate-800 text-white"
+      : "text-slate-300 hover:bg-slate-800/60 hover:text-white");
+
   return (
-    <nav className="nav">
-      <div className="nav-brand">Mini SOC Platform</div>
-      {LINKS.map((l) => (
-        <NavLink
-          key={l.to}
-          to={l.to}
-          end={l.end}
-          className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
+    <>
+      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
+        <span className="font-semibold">Mini SOC Platform</span>
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="rounded border border-slate-700 px-3 py-1 text-sm hover:bg-slate-800"
+          aria-expanded={open}
         >
-          {l.label}
-        </NavLink>
-      ))}
-      <div className="nav-footer">
-        {role && <div>Role: {role}</div>}
-        <button className="secondary" style={{ marginTop: 8, width: "100%" }} onClick={handleLogout}>
-          Log out
+          {open ? "Close" : "Menu"}
         </button>
       </div>
-    </nav>
+
+      <nav
+        className={
+          (open ? "block" : "hidden") +
+          " border-b border-slate-800 bg-slate-900 p-3 " +
+          "md:flex md:w-60 md:flex-col md:border-b-0 md:border-r md:border-slate-800 md:p-4"
+        }
+      >
+        <div className="mb-4 hidden md:block">
+          <div className="text-lg font-bold">Mini SOC</div>
+          <div className="text-xs text-slate-400">Platform</div>
+        </div>
+
+        <div className="space-y-1">
+          {LINKS.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end={link.end}
+              className={linkClass}
+              onClick={() => setOpen(false)}
+            >
+              {link.label}
+            </NavLink>
+          ))}
+        </div>
+
+        <div className="mt-4 border-t border-slate-800 pt-3 md:mt-auto">
+          <div className="mb-2 text-xs text-slate-400">
+            Role: <span className="text-slate-200">{role}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full rounded bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700"
+          >
+            Log out
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }

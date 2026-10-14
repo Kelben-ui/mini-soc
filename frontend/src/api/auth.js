@@ -6,7 +6,9 @@ export async function login(username, password) {
   localStorage.setItem("jwt", token);
 
   const role = decodeRole(token);
-  if (role) localStorage.setItem("role", role);
+  if (role) {
+    localStorage.setItem("role", role);
+  }
 
   return res.data;
 }
@@ -26,14 +28,19 @@ export function logout() {
 }
 
 export function isLoggedIn() {
-  return !!localStorage.getItem("jwt");
+  return Boolean(localStorage.getItem("jwt"));
 }
 
 export function getRole() {
   return localStorage.getItem("role") || "user";
 }
-// src/api/auth.js — add this
-export function canCloseIncident() {
+
+// Leads/admins are the only backend roles allowed to close incidents, change
+// an alert's status and export alert evidence. The backend stays the security
+// boundary; this only hides controls the user cannot use.
+export function isLead() {
   const role = getRole();
   return role === "lead" || role === "admin";
 }
+
+export { isLead as canCloseIncident };

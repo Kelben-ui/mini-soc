@@ -38,8 +38,8 @@ export default function IncidentDetail() {
     try {
       const response = await client.get(`/api/incidents/${id}/actions`);
       setActions(Array.isArray(response.data) ? response.data : []);
-    } catch (err) {
-      console.error('Failed to fetch response actions:', err);
+    } catch {
+      setError("Failed to load response actions.");
     }
   };
 
@@ -49,8 +49,7 @@ export default function IncidentDetail() {
         const response = await client.get(`/api/incidents/${id}`);
         setIncident(response.data);
         setStatus(response.data.status);
-      } catch (err) {
-        console.error('Failed to fetch incident details:', err);
+      } catch {
         setError('Failed to load incident details.');
       } finally {
         setLoading(false);
@@ -66,8 +65,7 @@ export default function IncidentDetail() {
       await client.patch(`/api/incidents/${id}/status`, { status, comment: "Status updated from dashboard" });
       alert('Incident status updated successfully!');
     } catch (err) {
-      console.error('Failed to update status:', err);
-      alert('Error updating status.');
+      setError(err.response?.data?.detail || 'Could not update the status.');
     }
   };
 
@@ -85,8 +83,7 @@ export default function IncidentDetail() {
       setActionReason('');
       await fetchActions();
     } catch (err) {
-      console.error('Failed to record action:', err);
-      alert('Error recording the response action.');
+      setError(err.response?.data?.detail || 'Could not record the response action.');
     }
   };
 
@@ -100,8 +97,7 @@ export default function IncidentDetail() {
       alert(res.data.success ? `Blocked ${action.target}.` : `Block failed: ${res.data.message}`);
       await fetchActions();
     } catch (err) {
-      console.error('Failed to execute action:', err);
-      alert(err.response?.data?.detail || 'Error executing the response action.');
+      setError(err.response?.data?.detail || 'Error executing the response action.');
     }
   };
 
@@ -113,13 +109,12 @@ export default function IncidentDetail() {
       alert(res.data.success ? `Unblocked ${action.target}.` : `Unblock failed: ${res.data.message}`);
       await fetchActions();
     } catch (err) {
-      console.error('Failed to unblock action:', err);
-      alert(err.response?.data?.detail || 'Error removing the block.');
+      setError(err.response?.data?.detail || 'Error removing the block.');
     }
   };
 
-  if (loading) return <div className="p-6 text-white">Loading incident...</div>;
-  if (error) return <div className="p-6 text-red-500">{error}</div>;
+  if (loading) return <div className="p-6 text-slate-300">Loading incident...</div>;
+  if (error && !incident) return <div className="p-6 text-red-400">{error}</div>;
   if (!incident) return null;
 
   return (
@@ -130,6 +125,8 @@ export default function IncidentDetail() {
       >
         &larr; Back to Incidents
       </button>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 shadow space-y-4">
         <div className="flex justify-between items-start">
