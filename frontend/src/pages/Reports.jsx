@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getStats } from "../api/stats";
 import { getIncidents, openIncidentReport, downloadIncidentReport } from "../api/incidents";
+import { openSummaryReport, downloadSummaryReport } from "../api/reports";
 import { severityClasses } from "../utils/severity";
 import { formatDateTime, formatDuration } from "../utils/format";
 
@@ -24,6 +25,7 @@ export default function Reports() {
   const [stats, setStats] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [error, setError] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,9 +60,41 @@ export default function Reports() {
   const statsData = stats || {};
   const bySeverity = statsData.alerts_by_severity || {};
 
+  async function handleGenerateReport() {
+    setReportBusy(true);
+    setError("");
+
+    try {
+      await downloadSummaryReport();
+    } catch {
+      setError("Could not generate the summary report.");
+    } finally {
+      setReportBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Reports</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">Reports</h1>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => openSummaryReport()}
+            className="rounded bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700"
+          >
+            View summary report
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerateReport}
+            disabled={reportBusy}
+            className="rounded bg-sky-700 px-4 py-2 text-sm font-semibold hover:bg-sky-600 disabled:opacity-40"
+          >
+            {reportBusy ? "Generating..." : "Generate report"}
+          </button>
+        </div>
+      </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 

@@ -38,6 +38,12 @@ def login(
             detail="Invalid username or password"
         )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="This account has been deactivated"
+        )
+
     token = create_access_token({
         "sub": str(user.id),
         "username": user.username,

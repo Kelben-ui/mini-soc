@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -24,6 +24,15 @@ class User(Base):
 
     role: Mapped[str] = mapped_column(
         String(20),
+        nullable=False
+    )
+
+    # Soft delete: deactivated users keep their audit trail (notes, actions,
+    # evidence and status history all FK to users.id) but cannot authenticate.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
         nullable=False
     )
 

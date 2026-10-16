@@ -7,12 +7,18 @@ const getStats = vi.fn();
 const getIncidents = vi.fn();
 const openIncidentReport = vi.fn();
 const downloadIncidentReport = vi.fn();
+const openSummaryReport = vi.fn();
+const downloadSummaryReport = vi.fn();
 
 vi.mock("../api/stats", () => ({ getStats: (...args) => getStats(...args) }));
 vi.mock("../api/incidents", () => ({
   getIncidents: (...args) => getIncidents(...args),
   openIncidentReport: (...args) => openIncidentReport(...args),
   downloadIncidentReport: (...args) => downloadIncidentReport(...args),
+}));
+vi.mock("../api/reports", () => ({
+  openSummaryReport: (...args) => openSummaryReport(...args),
+  downloadSummaryReport: (...args) => downloadSummaryReport(...args),
 }));
 
 import Reports from "../pages/Reports";
@@ -32,6 +38,8 @@ describe("Reports", () => {
     getIncidents.mockReset();
     openIncidentReport.mockReset();
     downloadIncidentReport.mockReset();
+    openSummaryReport.mockReset();
+    downloadSummaryReport.mockReset();
     getStats.mockResolvedValue({
       data: {
         total_alerts: 1,
@@ -66,5 +74,19 @@ describe("Reports", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^download$/i }));
 
     expect(downloadIncidentReport).toHaveBeenCalledWith(7, "INC-0007");
+  });
+
+  it("generates the SOC summary report", async () => {
+    render(
+      <MemoryRouter>
+        <Reports />
+      </MemoryRouter>
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /generate report/i })
+    );
+
+    expect(downloadSummaryReport).toHaveBeenCalled();
   });
 });

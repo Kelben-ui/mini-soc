@@ -47,7 +47,14 @@ def test_rules_are_enriched_with_fire_counts(db, monkeypatch):
     import backend.app.routers.rules as rules_module
 
     repo_rules = Path(__file__).resolve().parents[2] / "rules"
-    monkeypatch.setattr(rules_module, "RULES_DIR", str(repo_rules))
+
+    # Force the bundled rules dir regardless of the local RULES_DIR value.
+    real_load_rules = rules_module.load_rules
+    monkeypatch.setattr(
+        rules_module,
+        "load_rules",
+        lambda **kwargs: real_load_rules(rules_dir=str(repo_rules), **kwargs),
+    )
 
     user = make_user(db)
     make_alert(db, rule_id="SSH-BF-001")
@@ -64,6 +71,31 @@ def test_rules_are_enriched_with_fire_counts(db, monkeypatch):
     assert ssh["mitre"] == "T1110"
     assert ssh["last_fired"] is not None
     assert "allowlist" not in {rule.get("id") for rule in rules}
+
+
+def test_load_rules_falls_back_to_repo_rules(tmp_path):
+    """A stale/nonexistent RULES_DIR must not blank the Rules page."""
+    from detection.engine.rule_loader import load_rules
+
+    rules = load_rules(rules_dir=str(tmp_path / "does-not-exist"))
+
+    assert any(rule.get("id") == "SSH-BF-001" for rule in rules)
+
+
+def test_load_rules_can_include_disabled(tmp_path):
+    from detection.engine.rule_loader import load_rules
+
+    (tmp_path / "disabled.yaml").write_text(
+        "id: TEST-DIS\nname: Disabled rule\nenabled: false\nmitre: T1000\n",
+        encoding="utf-8",
+    )
+
+    # The engine ignores disabled rules ...
+    assert load_rules(rules_dir=str(tmp_path)) == []
+
+    # ... but the Rules page shows them (greyed out).
+    listed = load_rules(rules_dir=str(tmp_path), include_disabled=True)
+    assert [rule["id"] for rule in listed] == ["TEST-DIS"]
 
 
 def test_threat_level_reflects_active_critical(db):

@@ -52,6 +52,12 @@ def get_current_user(
             detail="User not found"
         )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=401,
+            detail="Account is deactivated"
+        )
+
     return user
 
 def require_role(*allowed_roles):

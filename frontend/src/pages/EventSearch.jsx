@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import client from "../api/client";
 import { formatDateTime } from "../utils/format";
 
@@ -11,6 +11,7 @@ const EMPTY_FILTERS = {
 };
 
 const PAGE_SIZE = 100;
+const POLL_MS = 8000; // under the spec's 10s live-update requirement
 
 function toIso(value) {
   if (!value) return undefined;
@@ -18,50 +19,78 @@ function toIso(value) {
 }
 
 export default function EventSearch() {
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // The form holds "draft" values; only pressing Search copies them into
+  // "applied", which drives the fetch (and the live poll).  This keeps the
+  // page searchable while still auto-loading and refreshing like AlertsList.
+  const [draft, setDraft] = useState(EMPTY_FILTERS);
+  const [applied, setApplied] = useState(EMPTY_FILTERS);
   const [events, setEvents] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function updateFilter(name, value) {
-    setFilters((current) => ({ ...current, [name]: value }));
-  }
+  const { src_ip, host, log_type, start_time, end_time } = applied;
 
-  async function runSearch(nextOffset) {
-    setLoading(true);
-    setError("");
+  useEffect(() => {
+    let cancelled = false;
 
-    try {
-      const res = await client.get("/api/events", {
-        params: {
-          src_ip: filters.src_ip || undefined,
-          host: filters.host || undefined,
-          log_type: filters.log_type || undefined,
-          start_time: toIso(filters.start_time),
-          end_time: toIso(filters.end_time),
-          limit: PAGE_SIZE,
-          offset: nextOffset,
-        },
-      });
+    function fetchEvents() {
+      setLoading(true);
 
-      const payload = res.data || {};
-      setEvents(Array.isArray(res.data) ? res.data : payload.items || []);
-      setTotal(res.data?.total ?? 0);
-      setOffset(nextOffset);
-      setSearched(true);
-    } catch {
-      setError("Could not search events. Check the backend connection.");
-    } finally {
-      setLoading(false);
+      client
+        .get("/api/events", {
+          params: {
+            src_ip: src_ip || undefined,
+            host: host || undefined,
+            log_type: log_type || undefined,
+            start_time: toIso(start_time),
+            end_time: toIso(end_time),
+            limit: PAGE_SIZE,
+            offset,
+          },
+        })
+        .then((res) => {
+          if (cancelled) return;
+          const payload = res.data || {};
+          setEvents(Array.isArray(res.data) ? res.data : payload.items || []);
+          setTotal(res.data?.total ?? 0);
+          setError("");
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setError("Could not search events. Check the backend connection.");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }
+
+    fetchEvents();
+    const interval = setInterval(fetchEvents, POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [src_ip, host, log_type, start_time, end_time, offset]);
+
+  function updateDraft(name, value) {
+    setDraft((current) => ({ ...current, [name]: value }));
   }
 
   function handleSearch(event) {
     event.preventDefault();
-    runSearch(0);
+    setOffset(0);
+    setApplied(draft);
+  }
+
+  function handleClear() {
+    setDraft(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
+    setOffset(0);
+    setError("");
   }
 
   const inputClass =
@@ -77,22 +106,22 @@ export default function EventSearch() {
       >
         <input
           type="text"
-          value={filters.src_ip}
-          onChange={(event) => updateFilter("src_ip", event.target.value)}
+          value={draft.src_ip}
+          onChange={(event) => updateDraft("src_ip", event.target.value)}
           placeholder="Source IP"
           className={inputClass}
         />
         <input
           type="text"
-          value={filters.host}
-          onChange={(event) => updateFilter("host", event.target.value)}
+          value={draft.host}
+          onChange={(event) => updateDraft("host", event.target.value)}
           placeholder="Host"
           className={inputClass}
         />
         <input
           type="text"
-          value={filters.log_type}
-          onChange={(event) => updateFilter("log_type", event.target.value)}
+          value={draft.log_type}
+          onChange={(event) => updateDraft("log_type", event.target.value)}
           placeholder="Log type (e.g. auth)"
           className={inputClass}
         />
@@ -100,8 +129,8 @@ export default function EventSearch() {
           From
           <input
             type="datetime-local"
-            value={filters.start_time}
-            onChange={(event) => updateFilter("start_time", event.target.value)}
+            value={draft.start_time}
+            onChange={(event) => updateDraft("start_time", event.target.value)}
             className={`mt-1 w-full ${inputClass}`}
           />
         </label>
@@ -109,8 +138,8 @@ export default function EventSearch() {
           To
           <input
             type="datetime-local"
-            value={filters.end_time}
-            onChange={(event) => updateFilter("end_time", event.target.value)}
+            value={draft.end_time}
+            onChange={(event) => updateDraft("end_time", event.target.value)}
             className={`mt-1 w-full ${inputClass}`}
           />
         </label>
@@ -124,14 +153,7 @@ export default function EventSearch() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setFilters(EMPTY_FILTERS);
-              setEvents([]);
-              setTotal(0);
-              setOffset(0);
-              setSearched(false);
-              setError("");
-            }}
+            onClick={handleClear}
             className="rounded border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
           >
             Clear
@@ -141,11 +163,11 @@ export default function EventSearch() {
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      {searched && total > 0 && (
-        <p className="text-sm text-slate-400">
-          {`Showing ${offset + 1}–${offset + events.length} of ${total} events.`}
-        </p>
-      )}
+      <p className="text-sm text-slate-400">
+        {total > 0
+          ? `Showing ${offset + 1}–${offset + events.length} of ${total} events (live, refreshes every 8s).`
+          : "No events match these filters."}
+      </p>
 
       <div className="overflow-x-auto rounded-lg border border-slate-800">
         <table className="w-full min-w-[64rem] text-left text-sm">
@@ -164,9 +186,7 @@ export default function EventSearch() {
             {events.length === 0 ? (
               <tr>
                 <td colSpan="7" className="px-3 py-8 text-center text-slate-500">
-                  {searched
-                    ? "No events matched those filters."
-                    : "Set filters and search to view events."}
+                  {loading ? "Loading events..." : "No events matched those filters."}
                 </td>
               </tr>
             ) : (
@@ -194,12 +214,12 @@ export default function EventSearch() {
         </table>
       </div>
 
-      {searched && total > 0 && (
+      {total > 0 && (
         <div className="flex items-center justify-between">
           <button
             type="button"
             disabled={offset <= 0 || loading}
-            onClick={() => runSearch(Math.max(0, offset - PAGE_SIZE))}
+            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
             className="rounded border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
           >
             ← Previous
@@ -210,7 +230,7 @@ export default function EventSearch() {
           <button
             type="button"
             disabled={offset + events.length >= total || loading}
-            onClick={() => runSearch(offset + PAGE_SIZE)}
+            onClick={() => setOffset(offset + PAGE_SIZE)}
             className="rounded border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
           >
             Next →

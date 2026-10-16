@@ -8,7 +8,9 @@ from fastapi import HTTPException
 from backend.app.models.audit_log import AuditLog
 from backend.app.models.user import User
 from backend.app.routers.users import (
+    activate_user,
     create_user,
+    deactivate_user,
     list_users,
     reset_password,
     update_user,
@@ -134,3 +136,51 @@ def test_reset_password_updates_hash(db):
 
     db.refresh(target)
     assert target.password_hash != "x"
+
+
+def test_deactivate_and_reactivate_user(db):
+    admin = make_user(db, role="admin")
+    target = make_user(db, role="analyst")
+
+    result = deactivate_user(target.id, db=db, current_user=admin)
+
+    assert result["is_active"] is False
+
+    db.refresh(target)
+    assert target.is_active is False
+
+    assert (
+        db.query(AuditLog).filter(AuditLog.action == "user_deactivated").count()
+        >= 1
+    )
+
+    result = activate_user(target.id, db=db, current_user=admin)
+
+    assert result["is_active"] is True
+
+    db.refresh(target)
+    assert target.is_active is True
+
+
+def test_cannot_deactivate_self(db):
+    admin = make_user(db, role="admin")
+
+    with pytest.raises(HTTPException) as exc:
+        deactivate_user(admin.id, db=db, current_user=admin)
+
+    assert exc.value.status_code == 400
+
+
+def test_cannot_deactivate_last_admin(db):
+    # Make the target the only active admin in the shared test database.
+    for existing in db.query(User).filter(User.role == "admin").all():
+        existing.role = "analyst"
+    db.commit()
+
+    target = make_user(db, role="admin")
+    actor = make_user(db, role="analyst")
+
+    with pytest.raises(HTTPException) as exc:
+        deactivate_user(target.id, db=db, current_user=actor)
+
+    assert exc.value.status_code == 400

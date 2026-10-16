@@ -4,16 +4,19 @@ Rules are still authored as YAML under ``rules/``; this endpoint reads them
 and enriches each one with live alert statistics (how many alerts it has fired
 and when it last fired), so the Rules page can show fire count and MITRE
 technique without exposing raw rule internals.
+
+Loading goes through ``detection.engine.rule_loader.load_rules`` so the page and
+the detection engine agree on where the rules live (including the fallback to
+``<repo>/rules`` when ``RULES_DIR`` points somewhere that does not exist).
+``include_disabled=True`` keeps ``enabled: false`` rules in the list so the page
+can grey them out instead of hiding them.
 """
 
-import os
-
-import yaml
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from mini_soc_config import rules_dir
+from detection.engine.rule_loader import load_rules
 
 from ..database import get_db
 from ..dependencies import get_current_user
@@ -25,35 +28,10 @@ router = APIRouter(
     tags=["Rules"]
 )
 
-# Absolute by default (RULES_DIR env -> <repo>/rules); never CWD-relative.
-RULES_DIR = str(rules_dir())
-
 
 def _load_rules():
-    """Return the rule YAML files that actually define a rule (``id``)."""
-    rules = []
-
-    if not os.path.exists(RULES_DIR):
-        return rules
-
-    for filename in sorted(os.listdir(RULES_DIR)):
-        if not (filename.endswith(".yml") or filename.endswith(".yaml")):
-            continue
-
-        file_path = os.path.join(RULES_DIR, filename)
-
-        try:
-            with open(file_path, "r") as handle:
-                rule_data = yaml.safe_load(handle)
-        except Exception as exc:  # pragma: no cover - defensive
-            print(f"Error parsing {filename}: {exc}")
-            continue
-
-        # Skip helper files such as allowlist.yaml that carry no rule id.
-        if isinstance(rule_data, dict) and rule_data.get("id"):
-            rules.append(rule_data)
-
-    return rules
+    """Return every rule YAML file that defines a rule (``id``), disabled too."""
+    return load_rules(include_disabled=True)
 
 
 def _alert_stats(db):

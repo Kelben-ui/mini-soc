@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { getRole } from "../api/auth";
+import { getRole, getUserId } from "../api/auth";
 import {
+  activateUser,
   createUser,
+  deactivateUser,
   getUsers,
   resetUserPassword,
   updateUserRole,
@@ -13,6 +15,7 @@ const MIN_PASSWORD_LENGTH = 8;
 export default function Users() {
   const role = getRole();
   const isAdmin = role === "admin";
+  const currentUserId = getUserId();
 
   const [users, setUsers] = useState([]);
   const [error, setError] = useState("");
@@ -25,6 +28,8 @@ export default function Users() {
 
   const [resetTarget, setResetTarget] = useState(null);
   const [resetPassword, setResetPassword] = useState("");
+
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
 
   function load() {
     return getUsers()
@@ -95,6 +100,37 @@ export default function Users() {
     }
   }
 
+  async function handleDeactivate() {
+    if (!deactivateTarget) return;
+
+    setBusy(true);
+
+    try {
+      await deactivateUser(deactivateTarget.id);
+      setDeactivateTarget(null);
+      await load();
+      flash(`${deactivateTarget.username} deactivated.`);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not deactivate the user.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleActivate(user) {
+    setBusy(true);
+
+    try {
+      await activateUser(user.id);
+      await load();
+      flash(`${user.username} reactivated.`);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not reactivate the user.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Users</h1>
@@ -152,25 +188,29 @@ export default function Users() {
       )}
 
       <section className="overflow-x-auto rounded-lg border border-slate-800">
-        <table className="w-full min-w-[40rem] text-left text-sm">
+        <table className="w-full min-w-[44rem] text-left text-sm">
           <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
             <tr>
               <th className="px-4 py-2">ID</th>
               <th className="px-4 py-2">Username</th>
               <th className="px-4 py-2">Role</th>
+              <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
             {users.length === 0 ? (
               <tr>
-                <td colSpan="4" className="px-4 py-8 text-center text-slate-500">
+                <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
                   No users.
                 </td>
               </tr>
             ) : (
               users.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-900/60">
+                <tr
+                  key={user.id}
+                  className={`hover:bg-slate-900/60 ${user.is_active === false ? "opacity-60" : ""}`}
+                >
                   <td className="px-4 py-2 text-slate-400">{user.id}</td>
                   <td className="px-4 py-2">{user.username}</td>
                   <td className="px-4 py-2">
@@ -194,14 +234,51 @@ export default function Users() {
                     )}
                   </td>
                   <td className="px-4 py-2">
+                    {user.is_active === false ? (
+                      <span className="rounded-full bg-red-950 px-2 py-0.5 text-xs font-semibold text-red-300">
+                        inactive
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-950 px-2 py-0.5 text-xs font-semibold text-emerald-300">
+                        active
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
                     {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => setResetTarget(user)}
-                        className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
-                      >
-                        Reset password
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setResetTarget(user)}
+                          className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
+                        >
+                          Reset password
+                        </button>
+                        {user.is_active === false ? (
+                          <button
+                            type="button"
+                            onClick={() => handleActivate(user)}
+                            disabled={busy}
+                            className="rounded border border-emerald-800 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-950 disabled:opacity-40"
+                          >
+                            Reactivate
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeactivateTarget(user)}
+                            disabled={busy || user.id === currentUserId}
+                            title={
+                              user.id === currentUserId
+                                ? "You cannot deactivate your own account"
+                                : undefined
+                            }
+                            className="rounded border border-red-900 px-3 py-1 text-xs font-semibold text-red-300 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Deactivate
+                          </button>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -215,6 +292,9 @@ export default function Users() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <form
             onSubmit={handleResetPassword}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reset password"
             className="w-full max-w-md space-y-4 rounded-lg border border-slate-700 bg-slate-900 p-5"
           >
             <h2 className="text-lg font-semibold">
@@ -249,6 +329,41 @@ export default function Users() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Deactivate user"
+            className="w-full max-w-md space-y-4 rounded-lg border border-slate-700 bg-slate-900 p-5"
+          >
+            <h2 className="text-lg font-semibold">Deactivate user</h2>
+            <p className="text-sm text-slate-300">
+              Deactivate <strong>{deactivateTarget.username}</strong>? They will
+              no longer be able to sign in. Their audit history is kept and the
+              account can be reactivated later.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeactivateTarget(null)}
+                className="rounded border border-slate-700 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeactivate}
+                disabled={busy}
+                className="rounded bg-red-700 px-4 py-2 text-sm font-semibold hover:bg-red-600 disabled:opacity-40"
+              >
+                Deactivate
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

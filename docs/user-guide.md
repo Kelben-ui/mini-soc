@@ -134,17 +134,24 @@ The incident is the container for the investigation:
 
 ![Event search](images/screenshots/08-events.png)
 
-The raw normalized event stream. Filter by **source IP**, **host** and **log
-type** (e.g. `auth`, `nginx_access`, `mini_soc_ids`, `firewall`). Use this to
-confirm exactly what the platform received, independent of the alerting layer.
+The raw normalized event stream. The newest events load as soon as you open the
+page and **live-refresh every 8 seconds**, so you always see the current state.
+
+Filter by **source IP**, **host** and **log type** (e.g. `auth`,
+`nginx_access`, `mini_soc_ids`, `firewall`) plus an optional time range, then
+press **Search** to apply the filter (the filter is not applied while you type).
+Use this to confirm exactly what the platform received, independent of the
+alerting layer.
 
 ## 6. Detection rules
 
 ![Detection rules](images/screenshots/09-rules.png)
 
 Every rule's **severity, category, MITRE technique, tactic, live alert count and
-last-fired time**, plus whether it is enabled. This is the live view of
-[`../rules/`](../rules/); see also [`rules.md`](rules.md).
+last-fired time**, plus whether it is enabled. All rules under [`../rules/`](../rules/)
+are listed here — including any that are disabled, which appear greyed out.
+The page reads the bundled rules directory, so it works even if `RULES_DIR`
+points at a missing path; see also [`rules.md`](rules.md).
 
 ## 7. Reports
 
@@ -156,6 +163,12 @@ and **Download** actions (used to produce the archived reports under
 `INC-XXXX-report.html` file; the same actions are also available on the
 incident detail page.
 
+At the top of the page, **Generate report** (and **View summary report**)
+produces a single **whole-SOC summary report** in the same HTML format as the
+per-incident reports — headline stats, live threat level, severity/status
+breakdowns, MTTD/MTTC/MTTR, top offenders and the incident list. It is read
+live from the database at the moment you press the button.
+
 ## 8. Users (lead/admin)
 
 ![Users](images/screenshots/11-users.png)
@@ -163,6 +176,11 @@ incident detail page.
 Create users, set roles and reset passwords. Passwords must meet the minimum
 length. New users are created through the API/dashboard, never by editing the
 database.
+
+Admins can also **Deactivate** a user (admin-only, confirmed) and **Reactivate**
+them later. Deactivation is a soft delete: the account can no longer sign in,
+but its audit history (notes, actions, evidence, status changes) is preserved.
+You cannot deactivate your own account or the last remaining admin.
 
 ## 9. Response actions and containment ("Block IP")
 

@@ -94,6 +94,82 @@ class TestSQLiXSS:
         )
         assert True
 
+    def test_incident_report_escapes_xss(self, db):
+        """Attacker-controlled fields must be HTML-escaped in the report."""
+        user = make_user(db, role="analyst")
+        inc = make_incident(db, title="<script>alert('xss')</script>")
+
+        response = incidents.get_incident_report(
+            inc.incident_id, db=db, current_user=user
+        )
+        body = response.body.decode()
+
+        assert "<script>alert" not in body
+        assert "&lt;script&gt;" in body
+
+    def test_summary_report_escapes_xss(self, db):
+        from backend.app.routers.reports import get_summary_report
+
+        user = make_user(db, role="analyst")
+        make_incident(db, title="<script>alert('xss')</script>")
+
+        response = get_summary_report(db=db, current_user=user)
+        body = response.body.decode()
+
+        assert "Mini SOC Summary Report" in body
+        assert "<script>alert" not in body
+        assert "&lt;script&gt;" in body
+
+    def test_evidence_download_is_opaque(self, db, tmp_path):
+        """Uploaded content must never be served as renderable HTML/SVG."""
+        lead = make_user(db, role="lead")
+        inc = make_incident(db)
+
+        stored = tmp_path / "evil.html"
+        stored.write_text("<script>alert(1)</script>", encoding="utf-8")
+
+        evidence = Evidence(
+            incident_id=inc.incident_id,
+            filename="evil.html",
+            type="text/html",
+            sha256="a" * 64,
+            size_bytes=stored.stat().st_size,
+            uploaded_by=lead.id,
+            uploaded_at=datetime.now(timezone.utc),
+            storage_path=str(stored),
+        )
+        db.add(evidence)
+        db.commit()
+        db.refresh(evidence)
+
+        response = incidents.download_evidence(
+            evidence.id, db=db, current_user=lead
+        )
+
+        assert response.media_type == "application/octet-stream"
+
+
+class TestSecurityHeaders:
+    def test_middleware_sets_hardening_headers(self):
+        import asyncio
+
+        from starlette.requests import Request
+        from starlette.responses import Response
+
+        from backend.app import main
+
+        async def call_next(_request):
+            return Response("ok", media_type="text/plain")
+
+        request = Request(
+            {"type": "http", "method": "GET", "path": "/api/stats", "headers": []}
+        )
+        response = asyncio.run(main.add_security_headers(request, call_next))
+
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["X-Frame-Options"] == "DENY"
+        assert "Content-Security-Policy" in response.headers
+
 
 class TestIDOR:
     def test_get_incident_requires_authz(self, db):

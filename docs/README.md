@@ -13,6 +13,7 @@ for the one-command install, then use the table below.
 | [`lab-setup.md`](lab-setup.md) | Ops / demo | Building the EC2 host from scratch (Security Group, install, DVWA, AMI snapshot). |
 | [`demo-script.md`](demo-script.md) | Presenters | The timed end-to-end demo runbook (roles, acts, contingencies, rehearsal log). |
 | [`user-guide.md`](user-guide.md) | Analysts | How to use the dashboard: triage, incidents, actions, reporting. |
+| [`security.md`](security.md) | All | How SQL injection and XSS are prevented (ORM parameterisation, report escaping, CSP, security headers) and the tests that prove it. |
 
 ## Testing
 

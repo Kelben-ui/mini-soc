@@ -40,6 +40,7 @@ def _serialize(user):
         "id": user.id,
         "username": user.username,
         "role": user.role,
+        "is_active": user.is_active,
         "created_at": user.created_at,
     }
 
@@ -58,7 +59,12 @@ def _audit(db, current_user, action, resource_id, details):
 
 
 def _admin_count(db):
-    return db.query(User).filter(User.role == ADMIN_ROLE).count()
+    """Active admins only — a deactivated admin must not count for guardrails."""
+    return (
+        db.query(User)
+        .filter(User.role == ADMIN_ROLE, User.is_active.is_(True))
+        .count()
+    )
 
 
 @router.get("/users")
@@ -184,3 +190,79 @@ def reset_password(
     db.commit()
 
     return {"id": user.id, "username": user.username, "message": "Password updated"}
+
+
+@router.delete("/users/{user_id}")
+def deactivate_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("admin")),
+):
+    """Soft-delete a user (admin only).
+
+    A hard delete would break the NOT NULL foreign keys the audit trail holds
+    on ``users.id``, so "delete" deactivates instead: the user can no longer
+    log in and is shown as inactive, but every note/action/evidence row keeps
+    its author.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot deactivate your own account",
+        )
+
+    if user.role == ADMIN_ROLE and _admin_count(db) <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot deactivate the last remaining admin",
+        )
+
+    if user.is_active:
+        user.is_active = False
+
+        _audit(
+            db,
+            current_user,
+            "user_deactivated",
+            user.id,
+            f"Deactivated user '{user.username}'",
+        )
+
+    db.commit()
+    db.refresh(user)
+
+    return _serialize(user)
+
+
+@router.post("/users/{user_id}/activate")
+def activate_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role("admin")),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.is_active:
+        user.is_active = True
+
+        _audit(
+            db,
+            current_user,
+            "user_activated",
+            user.id,
+            f"Reactivated user '{user.username}'",
+        )
+
+    db.commit()
+    db.refresh(user)
+
+    return _serialize(user)
+

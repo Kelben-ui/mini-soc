@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 import hashlib
-import html
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from mini_soc_config import evidence_dir
+from ..utils.report_html import CSP_META, esc, esc_list
 from ..models.alert import Alert
 from ..models.note import Note
 from ..models.evidence import Evidence
@@ -31,20 +31,6 @@ router = APIRouter(
     prefix="/api",
     tags=["Incidents"]
 )
-
-def esc(value):
-    """HTML-escape a value for safe interpolation into the report."""
-    return html.escape(str(value)) if value is not None else ""
-
-
-def esc_list(values):
-    """Render a list field (e.g. affected hosts) as an escaped comma list."""
-    if values is None:
-        return ""
-    if isinstance(values, (list, tuple)):
-        return html.escape(", ".join(str(v) for v in values))
-    return html.escape(str(values))
-
 
 def _as_utc(value):
     """Normalize SQLite's naive datetimes so timestamp maths never fails."""
@@ -809,6 +795,7 @@ def get_incident_report(
     <html>
     <head>
         <meta charset="UTF-8">
+        {CSP_META}
         <title>Incident Report {esc(incident.incident_code)}</title>
         <style>
             body {{
@@ -1131,8 +1118,13 @@ def download_evidence(
     db.add(audit)
     db.commit()
 
+    # Always hand evidence back as an opaque download.  The stored
+    # ``evidence.type`` is attacker-influenced (it comes from the upload), so
+    # serving it verbatim would let an uploaded .html/.svg render and execute
+    # in the app's origin (stored XSS).  octet-stream + attachment prevents it.
     return FileResponse(
         path=evidence.storage_path,
         filename=evidence.filename,
-        media_type=evidence.type,
+        media_type="application/octet-stream",
+        headers={"X-Content-Type-Options": "nosniff"},
     )

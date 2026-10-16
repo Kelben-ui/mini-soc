@@ -15,6 +15,7 @@ from .routers.agents import router as agents_router
 from .routers.actions import router as actions_router
 from .routers.chains import router as chains_router
 from .routers.users import router as users_router
+from .routers.reports import router as reports_router
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="Mini SOC Platform API",
@@ -49,6 +50,44 @@ app.include_router(agents_router)
 app.include_router(actions_router)
 app.include_router(chains_router)
 app.include_router(users_router)
+app.include_router(reports_router)
+
+
+# --- Security headers (task 9.2) -------------------------------------------
+# Defence in depth on top of the ORM (SQLi) and React/`esc` escaping (XSS):
+# clickjacking, MIME sniffing and referrer leakage are all disabled, and every
+# non-docs response carries a locked-down Content-Security-Policy.  `style-src
+# 'unsafe-inline'` is required by the generated reports (embedded <style>) and
+# by chart inline styles; scripts are still `default-src 'none'`.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+
+API_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+    "base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+)
+
+_DOCS_PREFIXES = ("/docs", "/redoc", "/openapi.json")
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+
+    path = request.url.path
+
+    if not path.startswith(_DOCS_PREFIXES):
+        response.headers.setdefault("Content-Security-Policy", API_CSP)
+
+    return response
 
 
 @app.on_event("startup")

@@ -4,7 +4,13 @@ import yaml
 from mini_soc_config import rules_dir as default_rules_dir
 
 
-def load_rules(rules_dir=None):
+def load_rules(rules_dir=None, include_disabled=False):
+    """Load rule YAML files.
+
+    Set ``include_disabled=True`` to keep rules marked ``enabled: false`` — the
+    detection engine filters them out (default), but the dashboard's Rules page
+    wants to list every rule and grey out the disabled ones.
+    """
     # Default to the absolute rules directory (RULES_DIR env -> <repo>/rules) so
     # loading never depends on the current working directory (task 2.8).  If the
     # configured directory is missing (e.g. a dev .env that points RULES_DIR at a
@@ -18,22 +24,23 @@ def load_rules(rules_dir=None):
 
     rules = []
 
-    for rule_file in rules_path.glob("*.yaml"):
-        with open(rule_file, "r", encoding="utf-8") as file:
-            rule = yaml.safe_load(file)
+    for pattern in ("*.yaml", "*.yml"):
+        for rule_file in rules_path.glob(pattern):
+            with open(rule_file, "r", encoding="utf-8") as file:
+                rule = yaml.safe_load(file)
 
-        if not rule:
-            continue
+            if not rule:
+                continue
 
-        if not isinstance(rule, dict):
-            continue
+            if not isinstance(rule, dict):
+                continue
 
-        if rule.get("enabled", True) is False:
-            continue
+            if not include_disabled and rule.get("enabled", True) is False:
+                continue
 
-        if "id" not in rule:
-            continue
+            if "id" not in rule:
+                continue
 
-        rules.append(rule)
+            rules.append(rule)
 
     return rules
