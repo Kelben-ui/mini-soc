@@ -9,6 +9,7 @@ import {
 } from "../api/alerts";
 import { isLead } from "../api/auth";
 import { PLAYBOOK_MAP } from "../playbookMap";
+import { formatDateTime } from "../utils/format";
 
 const STATUS_OPTIONS = [
   "NEW",
@@ -238,8 +239,8 @@ export default function AlertDetail() {
             "Not promoted"
           )}
         </Field>
-        <Field label="First seen">{alert.first_seen}</Field>
-        <Field label="Last seen">{alert.last_seen}</Field>
+        <Field label="First seen">{formatDateTime(alert.first_seen)}</Field>
+        <Field label="Last seen">{formatDateTime(alert.last_seen)}</Field>
       </section>
 
       <section className="flex flex-wrap gap-3">
@@ -329,7 +330,7 @@ export default function AlertDetail() {
                 {events.map((event) => (
                   <tr key={event.event_id}>
                     <td className="px-3 py-2 text-xs text-slate-400">
-                      {event.timestamp}
+                      {formatDateTime(event.timestamp)}
                     </td>
                     <td className="px-3 py-2">{event.host}</td>
                     <td className="px-3 py-2">{event.log_type}</td>

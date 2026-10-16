@@ -10,6 +10,7 @@ import {
   getNotes,
   getTimeline,
   openIncidentReport,
+  downloadIncidentReport,
   recordAction,
   updateIncident,
   updateIncidentStatus,
@@ -332,8 +333,15 @@ export default function IncidentDetail() {
         </span>
         <button
           type="button"
-          onClick={() => openIncidentReport(id)}
+          onClick={() => downloadIncidentReport(id, incident.incident_code)}
           className="ml-auto rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
+        >
+          Download report
+        </button>
+        <button
+          type="button"
+          onClick={() => openIncidentReport(id)}
+          className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
         >
           View report
         </button>

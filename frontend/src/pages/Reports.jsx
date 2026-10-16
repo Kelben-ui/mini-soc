@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getStats } from "../api/stats";
-import { getIncidents, openIncidentReport } from "../api/incidents";
+import { getIncidents, openIncidentReport, downloadIncidentReport } from "../api/incidents";
 import { severityClasses } from "../utils/severity";
 import { formatDateTime, formatDuration } from "../utils/format";
 
@@ -160,13 +160,27 @@ export default function Reports() {
                       {formatDateTime(incident.created_at)}
                     </td>
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => openIncidentReport(incident.incident_id)}
-                        className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
-                      >
-                        View report
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openIncidentReport(incident.incident_id)}
+                          className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
+                        >
+                          View report
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadIncidentReport(
+                              incident.incident_id,
+                              incident.incident_code
+                            )
+                          }
+                          className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold hover:bg-slate-700"
+                        >
+                          Download
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

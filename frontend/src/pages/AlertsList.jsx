@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAlerts } from "../api/alerts";
+import { formatDateTime } from "../utils/format";
 
 const SEVERITY_OPTIONS = ["", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
 const STATUS_OPTIONS = [
@@ -47,7 +48,19 @@ function statusClasses(status) {
   }
 }
 
-const EMPTY_FILTERS = { severity: "", status: "", srcIp: "", ruleId: "" };
+const EMPTY_FILTERS = {
+  severity: "",
+  status: "",
+  srcIp: "",
+  ruleId: "",
+  startTime: "",
+  endTime: "",
+};
+
+function toIso(value) {
+  if (!value) return undefined;
+  return new Date(value).toISOString();
+}
 
 export default function AlertsList() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -55,7 +68,7 @@ export default function AlertsList() {
   const [data, setData] = useState({ items: [], total: 0 });
   const [error, setError] = useState("");
 
-  const { severity, status, srcIp, ruleId } = filters;
+  const { severity, status, srcIp, ruleId, startTime, endTime } = filters;
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +79,8 @@ export default function AlertsList() {
         status: status || undefined,
         src_ip: srcIp || undefined,
         rule_id: ruleId || undefined,
+        start_time: toIso(startTime),
+        end_time: toIso(endTime),
         limit: PAGE_SIZE,
         offset,
       })
@@ -91,7 +106,7 @@ export default function AlertsList() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [severity, status, srcIp, ruleId, offset]);
+  }, [severity, status, srcIp, ruleId, startTime, endTime, offset]);
 
   function updateFilter(name, value) {
     setFilters((current) => ({ ...current, [name]: value }));
@@ -106,7 +121,7 @@ export default function AlertsList() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Alerts</h1>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <select
           value={severity}
           onChange={(event) => updateFilter("severity", event.target.value)}
@@ -144,6 +159,26 @@ export default function AlertsList() {
           placeholder="Source IP"
           className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm placeholder:text-slate-500"
         />
+
+        <label className="text-xs text-slate-400">
+          From
+          <input
+            type="datetime-local"
+            value={startTime}
+            onChange={(event) => updateFilter("startTime", event.target.value)}
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+          />
+        </label>
+
+        <label className="text-xs text-slate-400">
+          To
+          <input
+            type="datetime-local"
+            value={endTime}
+            onChange={(event) => updateFilter("endTime", event.target.value)}
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+          />
+        </label>
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
@@ -199,7 +234,7 @@ export default function AlertsList() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{alert.src_ip}</td>
                   <td className="px-4 py-3 text-xs text-slate-400">
-                    {alert.last_seen}
+                    {formatDateTime(alert.last_seen)}
                   </td>
                 </tr>
               ))

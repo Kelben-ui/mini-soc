@@ -4,6 +4,10 @@ export function getIncidents() {
   return client.get("/api/incidents");
 }
 
+export function createIncident(payload) {
+  return client.post("/api/incidents", payload);
+}
+
 export function getIncident(id) {
   return client.get(`/api/incidents/${id}`);
 }
@@ -91,4 +95,21 @@ export async function openIncidentReport(id) {
   const url = URL.createObjectURL(res.data);
   window.open(url, "_blank", "noopener");
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Download the report as a standalone HTML file (spec: "generate and download
+// incident reports"). Uses a blob so the bearer token is sent.
+export async function downloadIncidentReport(id, code) {
+  const res = await client.get(`/api/incidents/${id}/report`, {
+    responseType: "blob",
+  });
+
+  const url = URL.createObjectURL(res.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${code || `incident-${id}`}-report.html`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

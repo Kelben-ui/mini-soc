@@ -33,7 +33,9 @@ export evidence; analysts can investigate and record actions.
 The landing page gives the current posture:
 
 - the **threat-level banner** — the overall level and the open counts by
-  severity (CRITICAL/HIGH/MEDIUM/LOW);
+  severity (CRITICAL/HIGH/MEDIUM/LOW). When the level is HIGH or CRITICAL the
+  banner also **names the newest active alert**, for example
+  `HIGH SEVERITY — SSH BRUTE FORCE`, and links straight to it;
 - recent alert activity and the top sources;
 - **agent heartbeats** — any log agent that has stopped reporting shows here
   ("No agent heartbeats received" until the first beacon).
@@ -47,9 +49,10 @@ events — check the services (Section 12).
 
 ![Alerts list](images/screenshots/02-alerts.png)
 
-Filter by **severity**, **status**, **Rule ID** (e.g. `SSH-BF-001`) and
-**Source IP**. Each row shows the title, severity, status, source IP and last
-seen time. Select a row to open the alert.
+Filter by **severity**, **status**, **Rule ID** (e.g. `SSH-BF-001`), **Source
+IP** and a **time range** (`From`/`To`). Each row shows the title, severity,
+status, source IP and last seen time. Select a row to open the alert. The list
+refreshes every few seconds, so newly detected alerts appear within 10 seconds.
 
 ### 3.2 Alert detail
 
@@ -102,6 +105,12 @@ them into a **chain**.
 
 All incidents with severity, title, status and available actions.
 
+**New incident** (lead/admin) — besides promoting an alert or chain, leads can
+open the incident list, select **New incident** and fill in the title,
+description, severity, category, source IPs and affected hosts manually
+(`POST /api/incidents`). The dashboard jumps to the new incident once it is
+created.
+
 ### 4.2 Incident detail
 
 ![Incident detail](images/screenshots/07-incident-detail.png)
@@ -141,8 +150,11 @@ last-fired time**, plus whether it is enabled. This is the live view of
 
 ![Reports](images/screenshots/10-reports.png)
 
-Aggregate views over alerts and incidents, with per-incident report export
-(used to produce the archived reports under [`reports/`](reports/)).
+Aggregate views over alerts and incidents, with per-incident **View report**
+and **Download** actions (used to produce the archived reports under
+[`reports/`](reports/)). Downloading saves the report as a standalone
+`INC-XXXX-report.html` file; the same actions are also available on the
+incident detail page.
 
 ## 8. Users (lead/admin)
 

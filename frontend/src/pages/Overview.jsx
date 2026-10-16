@@ -94,7 +94,11 @@ export default function Overview() {
     return <p className="text-sm text-slate-400">Loading SOC overview...</p>;
   }
 
-  const counts = severityCounts(stats.alerts_by_severity);
+  // Prefer the server's "active" counts (open alerts only); fall back to all
+  // alerts if the backend doesn't provide them.
+  const counts = severityCounts(
+    stats.active_alerts_by_severity || stats.alerts_by_severity
+  );
   const agents = stats.agents || [];
   const online = stats.agents_online || 0;
 

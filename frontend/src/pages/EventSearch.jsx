@@ -1,5 +1,6 @@
 import { useState } from "react";
 import client from "../api/client";
+import { formatDateTime } from "../utils/format";
 
 const EMPTY_FILTERS = {
   src_ip: "",
@@ -172,7 +173,7 @@ export default function EventSearch() {
               events.map((event) => (
                 <tr key={event.event_id} className="align-top hover:bg-slate-900/60">
                   <td className="px-3 py-3 text-xs text-slate-400">
-                    {event.timestamp}
+                    {formatDateTime(event.timestamp)}
                   </td>
                   <td className="px-3 py-3">{event.host}</td>
                   <td className="px-3 py-3">{event.log_type}</td>
