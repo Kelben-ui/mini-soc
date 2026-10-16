@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import client from "../api/client";
 import {
   exportAlertEvidence,
@@ -7,8 +9,9 @@ import {
   promoteAlert,
   updateAlert,
 } from "../api/alerts";
+import { recordAction } from "../api/incidents";
 import { isLead } from "../api/auth";
-import { PLAYBOOK_MAP } from "../playbookMap";
+import { playbookFor } from "../playbookMap";
 import { formatDateTime } from "../utils/format";
 
 const STATUS_OPTIONS = [
@@ -83,21 +86,34 @@ export default function AlertDetail() {
       .catch(() => {});
   }, [lead]);
 
+  // Every rule resolves to a playbook; unmapped rules fall back to the umbrella
+  // playbook (see playbookMap.js). Derived during render so there is no
+  // synchronous state update in the effect below.
+  const playbookFile = alert ? playbookFor(alert.rule_id) : "";
+
   useEffect(() => {
     if (!alert) return;
 
-    const filename = PLAYBOOK_MAP[alert.rule_id];
+    let cancelled = false;
 
-    if (!filename) {
-      setPlaybook("No playbook mapped for this rule.");
-      return;
-    }
+    fetch(`/playbooks/${playbookFile}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("not found");
+        return res.text();
+      })
+      .then((text) => {
+        if (!cancelled) setPlaybook(text);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlaybook("Could not load the playbook. Rebuild with `npm run build`.");
+        }
+      });
 
-    fetch(`/playbooks/${filename}`)
-      .then((res) => res.text())
-      .then(setPlaybook)
-      .catch(() => setPlaybook("Could not load playbook."));
-  }, [alert]);
+    return () => {
+      cancelled = true;
+    };
+  }, [alert, playbookFile]);
 
   function flash(message) {
     setNotice(message);
@@ -178,6 +194,39 @@ export default function AlertDetail() {
     }
   }
 
+  async function handleBlock() {
+    if (!alert.incident_id) {
+      setError("Promote this alert to an incident before recording a block.");
+      return;
+    }
+
+    const target = alert.src_ip;
+    if (
+      !window.confirm(
+        `Record a "block IP" action for ${target}? You still confirm the block on the incident before it runs.`
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+
+    try {
+      await recordAction(alert.incident_id, {
+        action_type: "block ip",
+        target,
+        reason: `Block ${target} from alert ${alert.alert_id} (${alert.rule_id})`,
+        result: "Recorded for analyst review",
+      });
+      flash(`Block-IP action recorded for ${target}. Confirm it on the incident.`);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not record the block action.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (error && !alert) {
     return <p className="text-sm text-red-400">{error}</p>;
   }
@@ -244,14 +293,23 @@ export default function AlertDetail() {
       </section>
 
       <section className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handlePromote}
-          disabled={busy || Boolean(alert.incident_id)}
-          className="rounded bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700 disabled:opacity-40"
-        >
-          {alert.incident_id ? "Already promoted" : "Promote to incident"}
-        </button>
+        {alert.incident_id ? (
+          <Link
+            to={`/incidents/${alert.incident_id}`}
+            className="rounded bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700"
+          >
+            Open incident #{alert.incident_id}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={handlePromote}
+            disabled={busy}
+            className="rounded bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700 disabled:opacity-40"
+          >
+            Promote to incident
+          </button>
+        )}
 
         {lead && (
           <button
@@ -271,6 +329,22 @@ export default function AlertDetail() {
             className="rounded bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700 disabled:opacity-40"
           >
             Export evidence
+          </button>
+        )}
+
+        {lead && alert.src_ip && (
+          <button
+            type="button"
+            onClick={handleBlock}
+            disabled={busy || !alert.incident_id}
+            title={
+              alert.incident_id
+                ? `Record a "block IP" action for ${alert.src_ip}`
+                : "Promote this alert to an incident first"
+            }
+            className="rounded bg-red-900 px-4 py-2 text-sm font-semibold hover:bg-red-800 disabled:opacity-40"
+          >
+            Block source IP
           </button>
         )}
       </section>
@@ -356,12 +430,28 @@ export default function AlertDetail() {
       </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-          Response playbook
-        </h2>
-        <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-300">
-          {playbook}
-        </pre>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+            Response playbook
+          </h2>
+          {playbookFile && (
+            <a
+              href={`/playbooks/${playbookFile}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-sky-400 hover:underline"
+            >
+              Open raw / print ↗
+            </a>
+          )}
+        </div>
+        {playbook ? (
+          <article className="playbook max-h-[32rem] overflow-auto pr-2">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{playbook}</ReactMarkdown>
+          </article>
+        ) : (
+          <p className="text-sm text-slate-500">Loading playbook...</p>
+        )}
       </section>
 
       {dialogOpen && lead && (

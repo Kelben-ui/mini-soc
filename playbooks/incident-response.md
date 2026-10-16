@@ -1,13 +1,16 @@
 # Mini SOC — Incident Response Playbook
 
-> **Version:** 1.0 (Phase 9) · **Deployment:** single Amazon EC2 instance (public
+> **Version:** 1.1 · **Deployment:** single Amazon EC2 instance (public
 > host `mini-soc`, Ubuntu 24.04, hostname `soc-01`) · **Owner:** M6
 >
-> This is the **single, canonical playbook**. Every alert kind in the platform
-> links here. It replaces the earlier per-scenario drafts
-> (`port-scan.md`, `ssh-brute-force.md`, `web-attack.md`).
-> `frontend/scripts/sync-playbooks.mjs` copies exactly this file into the
-> dashboard at build time, so there is only ever one authored copy.
+> This is the **umbrella playbook**: the platform model, the universal steps that
+> apply to every alert, the shared containment / closure / reporting rules, and
+> the index of the per-alert playbooks in this directory.
+>
+> Each detection rule also has its own standalone playbook — the alert detail page
+> loads the one for the rule that fired. `frontend/scripts/sync-playbooks.mjs`
+> copies **every** playbook in this directory into the dashboard at build time, so
+> there is still a single authored copy of each.
 
 ---
 
@@ -110,23 +113,27 @@ from that address, and the timeout lifts the block automatically.
 **What it does *not* do.** It does not disable accounts or isolate hosts. Those
 remain recorded actions + manual work (Section 12).
 
-## 4. Rule → scenario index
+## 4. Rule → playbook index
 
-| Rule ID | Name | Severity | Trigger | Scenario |
-|---|---|---|---|---|
-| WEB-SQLI-001 | SQL injection | HIGH | web request contains SQLi tokens | §7 |
-| WEB-XSS-001 | Cross-site scripting | MEDIUM | web request contains XSS tokens | §7 |
-| WEB-CMD-001 | Command injection | HIGH | web request contains `; id`, `\| whoami`, … | §7 |
-| WEB-LFI-001 | Directory traversal / LFI | HIGH | web request contains `../`, `/etc/passwd`, `php://` | §7 |
-| WEB-SCAN-001 | Scanner user agent | MEDIUM | UA contains sqlmap/nikto/nmap/gobuster | §6 |
-| WEB-BF-001 | Web login brute force | HIGH | ≥20 POST `/login` from one `src_ip` / 120 s | §8 |
-| WEB-FLOOD-001 | HTTP flood | MEDIUM | ≥301 requests with status 301 / 60 s from one `src_ip` | §9 |
-| SSH-BF-001 | SSH brute force | HIGH | ≥10 failed `ssh_login` / 300 s (per src→dst) | §5 |
-| SSH-SUCCESS-001 | Login success after brute force | CRITICAL | successful `ssh_login` (correlated to a BF alert) | §5 |
-| NET-PORTSCAN-001 | Port scan | MEDIUM | nftables/IDS: ≥20 distinct ports from one source | §6 |
-| IDS-SIG-001 | Generic IDS signature | HIGH | IDS alert that is not a mapped kind (SSH-sig, SYN flood) | §10 |
-| DNS-ANOMALY-001 | Unusual DNS activity | LOW | IDS DNS-tunnelling signature (long labels / high rate) | §10 |
-| NET-OUTBOUND-001 | Unusual outbound connection | MEDIUM | host connects out to a port outside 53/80/443/123 | §11 |
+Every rule has its own standalone playbook (loaded automatically when you open
+an alert of that type). The "Scenario" column points at the shared section below
+for the full context.
+
+| Rule ID | Name | Severity | Trigger | Playbook | Scenario |
+|---|---|---|---|---|---|
+| WEB-SQLI-001 | SQL injection | HIGH | web request contains SQLi tokens | [`web-sqli.md`](web-sqli.md) | §7 |
+| WEB-XSS-001 | Cross-site scripting | MEDIUM | web request contains XSS tokens | [`web-xss.md`](web-xss.md) | §7 |
+| WEB-CMD-001 | Command injection | HIGH | web request contains `; id`, `\| whoami`, … | [`web-command-injection.md`](web-command-injection.md) | §7 |
+| WEB-LFI-001 | Directory traversal / LFI | HIGH | web request contains `../`, `/etc/passwd`, `php://` | [`web-traversal-lfi.md`](web-traversal-lfi.md) | §7 |
+| WEB-SCAN-001 | Scanner user agent | MEDIUM | UA contains sqlmap/nikto/nmap/gobuster | [`web-scanner-user-agent.md`](web-scanner-user-agent.md) | §6 |
+| WEB-BF-001 | Web login brute force | HIGH | ≥20 POST `/login` from one `src_ip` / 120 s | [`web-login-bruteforce.md`](web-login-bruteforce.md) | §8 |
+| WEB-FLOOD-001 | HTTP flood | MEDIUM | ≥301 requests with status 301 / 60 s from one `src_ip` | [`http-flood.md`](http-flood.md) | §9 |
+| SSH-BF-001 | SSH brute force | HIGH | ≥10 failed `ssh_login` / 300 s (per src→dst) | [`ssh-brute-force.md`](ssh-brute-force.md) | §5 |
+| SSH-SUCCESS-001 | Login success after brute force | CRITICAL | successful `ssh_login` (correlated to a BF alert) | [`ssh-success-after-bruteforce.md`](ssh-success-after-bruteforce.md) | §5 |
+| NET-PORTSCAN-001 | Port scan | MEDIUM | nftables/IDS: ≥20 distinct ports from one source | [`port-scan.md`](port-scan.md) | §6 |
+| IDS-SIG-001 | Generic IDS signature | HIGH | IDS alert that is not a mapped kind (SSH-sig, SYN flood) | [`ids-signature.md`](ids-signature.md) | §10 |
+| DNS-ANOMALY-001 | Unusual DNS activity | LOW | IDS DNS-tunnelling signature (long labels / high rate) | [`unusual-dns.md`](unusual-dns.md) | §10 |
+| NET-OUTBOUND-001 | Unusual outbound connection | MEDIUM | host connects out to a port outside 53/80/443/123 | [`unusual-outbound.md`](unusual-outbound.md) | §11 |
 
 ## 5. Scenario — SSH brute force / successful login
 
@@ -398,5 +405,5 @@ FALSE POSITIVE. See `docs/testing/second-source-ip.md`.
 
 ---
 
-*Canonical playbook. Do not fork it — edit this file and rebuild the dashboard
-(`npm run build` runs `sync-playbooks.mjs`).*
+*Umbrella playbook. Edit this file and the per-rule playbooks in this directory,
+then rebuild the dashboard (`npm run build` runs `sync-playbooks.mjs`).*

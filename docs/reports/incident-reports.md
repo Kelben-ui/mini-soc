@@ -1,9 +1,11 @@
 # Demo incident reports
 
 Two worked incident reports from the Phase 9 lab run — one **confirmed**
-intrusion and one **false positive**. They are the written record the playbook
-([`../../playbooks/incident-response.md`](../../playbooks/incident-response.md))
-is meant to produce, and are referenced from the demo script.
+intrusion and one **false positive**. They are the written record the response
+playbooks (the umbrella
+[`../../playbooks/incident-response.md`](../../playbooks/incident-response.md)
+plus one playbook per rule in [`../../playbooks/`](../../playbooks/)) are meant to
+produce, and are referenced from the demo script.
 
 > **Data note.** The evidence below is from the demo dataset
 > ([`../testing/screenshots/seed_demo.py`](../testing/screenshots/seed_demo.py)),
@@ -103,10 +105,10 @@ kill chain.
 2. **Investigate the outbound beacon** (4444) and the DNS query target — if the
    host is confirmed compromised, rebuild from the clean-baseline AMI rather than
    cleaning in place.
-5. **Tune on correlation, not single alerts.** Keep the chain window; alert on
+3. **Tune on correlation, not single alerts.** Keep the chain window; alert on
    `SSH-SUCCESS-001` after a brute-force alert as CRITICAL, which is already the
    behaviour here — verify it stays that way.
-6. **Rate-limit SSH at the host** (e.g. `MaxStartups`, key-only) so a brute force
+4. **Rate-limit SSH at the host** (e.g. `MaxStartups`, key-only) so a brute force
    cannot succeed at all, independent of the SOC.
 
 ### Lessons / rule confirmation

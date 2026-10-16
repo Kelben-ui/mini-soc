@@ -7,8 +7,9 @@ investigating attack chains, running incidents and taking response actions.
   IP by the AWS Security Group; see [`lab-setup.md`](lab-setup.md)).
 - **Sign-in:** username + password, exchanged for a JWT stored in the browser.
 - **Companion reading:** the response procedures live in
-  [`../playbooks/incident-response.md`](../playbooks/incident-response.md);
-  the data model is in [`contracts.md`](contracts.md).
+  [`../playbooks/`](../playbooks/) — the umbrella
+  [`incident-response.md`](../playbooks/incident-response.md) plus a playbook per
+  rule; the data model is in [`contracts.md`](contracts.md).
 
 > The screenshots below were captured with the Playwright tooling in
 > [`testing/screenshots/`](testing/screenshots/) against a locally-seeded demo
@@ -70,9 +71,18 @@ The detail view is the analyst's workspace for one alert:
 - **Export evidence** — download the linked raw events as an evidence file
   (recorded with a SHA-256 hash and chain of custody).
 - **Promote to incident** — turn this alert (or its whole chain) into an
-  incident for full investigation.
-- **Response playbook** — the mapped procedure for this rule, loaded from
-  [`../playbooks/incident-response.md`](../playbooks/incident-response.md).
+  incident for full investigation; once promoted the button becomes **Open
+  incident #N**.
+- **Block source IP** (leads/admins) — once the alert is on an incident, records
+  a `block IP` action for the alert's source on that incident. The action is only
+  **recorded** here; you still confirm it on the incident before it runs (see
+  Section 10).
+- **Response playbook** — the procedure for **this alert's rule**, rendered
+  inline (headings, lists, tables and checklists). Each rule has its own file
+  under [`../playbooks/`](../playbooks/) (for example `ssh-brute-force.md` for
+  `SSH-BF-001`); a rule without a mapped file falls back to the umbrella
+  [`incident-response.md`](../playbooks/incident-response.md). **Open raw /
+  print** opens the plain Markdown file.
 
 **Alert lifecycle**
 
@@ -99,7 +109,7 @@ them into a **chain**.
 
 ## 5. Incidents
 
-### 4.1 Incident list
+### 5.1 Incident list
 
 ![Security incidents](images/screenshots/06-incidents.png)
 
@@ -111,7 +121,7 @@ description, severity, category, source IPs and affected hosts manually
 (`POST /api/incidents`). The dashboard jumps to the new incident once it is
 created.
 
-### 4.2 Incident detail
+### 5.2 Incident detail
 
 ![Incident detail](images/screenshots/07-incident-detail.png)
 
@@ -150,6 +160,8 @@ alerting layer.
 Every rule's **severity, category, MITRE technique, tactic, live alert count and
 last-fired time**, plus whether it is enabled. All rules under [`../rules/`](../rules/)
 are listed here — including any that are disabled, which appear greyed out.
+Each rule also has a matching response playbook under
+[`../playbooks/`](../playbooks/), which is shown when you open one of its alerts.
 The page reads the bundled rules directory, so it works even if `RULES_DIR`
 points at a missing path; see also [`rules.md`](rules.md).
 

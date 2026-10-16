@@ -22,3 +22,124 @@ body {
 table {
   border-collapse: collapse;
 }
+
+/* Rendered response playbook (react-markdown). Tailwind's preflight resets
+   headings/lists, so re-apply readable typography scoped to .playbook. */
+.playbook {
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.playbook > :first-child {
+  margin-top: 0;
+}
+
+.playbook h1 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.playbook h2 {
+  margin: 1.1rem 0 0.4rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid #1e293b;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.playbook h3 {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.playbook p,
+.playbook ul,
+.playbook ol,
+.playbook blockquote,
+.playbook pre,
+.playbook table {
+  margin: 0.5rem 0;
+}
+
+.playbook ul,
+.playbook ol {
+  padding-left: 1.25rem;
+}
+
+.playbook ul {
+  list-style: disc;
+}
+
+.playbook ol {
+  list-style: decimal;
+}
+
+.playbook li {
+  margin: 0.15rem 0;
+}
+
+.playbook a {
+  color: #38bdf8;
+  text-decoration: underline;
+}
+
+.playbook code {
+  border-radius: 0.25rem;
+  background: #020617;
+  padding: 0.1rem 0.3rem;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.8em;
+  color: #e2e8f0;
+}
+
+.playbook pre {
+  overflow: auto;
+  border-radius: 0.375rem;
+  background: #020617;
+  padding: 0.75rem;
+}
+
+.playbook pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.playbook blockquote {
+  border-left: 3px solid #334155;
+  padding-left: 0.75rem;
+  color: #94a3b8;
+}
+
+.playbook table {
+  width: 100%;
+  text-align: left;
+  font-size: 0.8rem;
+}
+
+.playbook th,
+.playbook td {
+  border: 1px solid #1e293b;
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+}
+
+.playbook thead th {
+  background: #020617;
+  color: #94a3b8;
+}
+
+.playbook input[type="checkbox"] {
+  margin-right: 0.4rem;
+}
+
+.playbook hr {
+  margin: 1rem 0;
+  border: 0;
+  border-top: 1px solid #1e293b;
+}

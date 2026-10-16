@@ -27,8 +27,9 @@ the build machine, and a sign-off row.
 Demo incident reports for the two Phase 9 narratives (a confirmed multi-stage
 intrusion and a false-positive triage) live in
 [`incident-reports.md`](incident-reports.md). They are worked examples for the
-[incident-response playbook](../../playbooks/incident-response.md), not real
-customer data.
+response playbooks in [`../../playbooks/`](../../playbooks/) — the umbrella
+[`incident-response.md`](../../playbooks/incident-response.md) plus one playbook
+per detection rule — not real customer data.
 
 ## Conventions
 

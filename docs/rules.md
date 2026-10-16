@@ -80,14 +80,32 @@ Each rule contains:
 
 ---
 
+## 3.4 SQL Injection
+
 **Source:** Nginx
 
+**Logic:** Detect decoded URI or request body containing SQL-injection patterns,
+including:
+
+* quotes with `OR`
+* SQL comments (`--`, `/*`)
+* `SLEEP`
+* `UNION`
+
+**Severity:** HIGH
+
+---
 
 ## 3.5 Cross-Site Scripting
-**Logic:** Detect:
-* event handlers
 
-in the URI or request body.
+**Source:** Nginx
+
+**Logic:** Detect the following in the URI or request body:
+
+* `<script`
+* `javascript:`
+* event handlers (`onerror=`, `onload=`)
+
 **Severity:** MEDIUM
 
 
@@ -248,43 +266,9 @@ Testing must verify that:
 
 ---
 
-* `javascript:`
-* `<script`
+# 9. Response Playbooks
 
-
-**Source:** Nginx
-
----
-
-**Severity:** HIGH
-* quotes with OR
-* SQL comments
-* SLEEP
-* UNION
-
-**Logic:** Detect decoded URI or request body containing SQL injection patterns, including:
-
-
-## Port Scan Detection
-
-The Mini SOC uses the project's custom IDS as the source of normalized
-port-scan events.
-
-The IDS identifies port-scan activity based on multiple destination
-ports observed from the same source within the configured detection
-window.
-
-Once detected, the IDS produces a standardized event:
-
-- category: network
-- action: port_scan
-- src_ip: source IP
-- dst_ip: destination IP
-- details: IDS-specific information
-- raw: original IDS event
-
-The Detection Engine consumes this standardized event and creates the
-NET-PORTSCAN-001 alert.
-
-This keeps the Detection Engine source-independent and allows the IDS
-to perform network-specific detection.
+Every rule has a standalone response playbook under [`../playbooks/`](../playbooks/),
+loaded automatically when an analyst opens an alert of that type. The umbrella
+[`incident-response.md`](../playbooks/incident-response.md) holds the platform
+model, the universal steps and the index of per-rule playbooks.

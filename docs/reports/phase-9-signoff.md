@@ -37,7 +37,7 @@ Phase 3/4; unrelated to this change.
 |---|---|---|
 | 9.1 Results matrix (all attack-sim scripts, expected vs actual, detection time, false positives) | **Pending live** | Scaffold in `docs/testing/results.md`: the 13-row matrix with expected severities, plus the dedupe, correlation and block/unblock rows. Commands in `docs/testing/live-runbook.md`. Target 13/13. |
 | 9.2 Platform security test (SQLi, XSS, IDOR, JWT tampering, upload abuse, EC2 ports, IPS helper injection) | **Done (off-box) / ports scan pending** | `backend/tests/test_security.py` (11/11) covers SQLi/XSS, IDOR/RBAC, JWT tampering, upload abuse and helper injection. `docs/testing/security-test.md`. The EC2 `nmap` exposed-ports scan needs the live host. **No open High findings.** |
-| 9.3 Playbooks | **Done** | One merged, placeholder-free `playbooks/incident-response.md` covering all 13 rules; `playbooks/README.md`. The dashboard maps every rule id to it (`frontend/src/playbookMap.js`), and `frontend/scripts/sync-playbooks.mjs` copies the single canonical file into the build on `predev`/`prebuild` (one copy). |
+| 9.3 Playbooks | **Done** | One standalone, placeholder-free playbook **per rule** in `playbooks/` (13 files) plus the umbrella `playbooks/incident-response.md` (platform model, universal steps, index); `playbooks/README.md`. The alert detail page resolves the rule id to its own file (`frontend/src/playbookMap.js`, falling back to the umbrella) and renders it, and `frontend/scripts/sync-playbooks.mjs` copies every playbook into the build on `predev`/`prebuild` (one authored copy). |
 | 9.4 Demo script + 2 rehearsals | **Done (script) / rehearsals pending** | `docs/demo-script.md` adapted to the single-EC2 lab; rehearsal-log table present. The two timed rehearsals need the live lab. |
 | 9.5 Incident reports | **Done** | `docs/reports/incident-reports.md` — `INC-2026-0001` (confirmed multi-stage intrusion, 13 alerts → 1 chain → block) and `INC-2026-0002` (benign second source, false positive). |
 | 9.6 Folder READMEs + analyst guide | **Done** | New `agents/`, `collector/`, `rules/`, `infrastructure/`, `deploy/`, `docs/` READMEs; rewritten `docs/user-guide.md` with 12 screenshots in `docs/images/screenshots/` captured by the tooling in `docs/testing/screenshots/`. |
@@ -66,10 +66,14 @@ nmap/hydra items run from Kali. The full command set is in
 
 ## 4. Notes and decisions
 
-1. **One playbook, one copy.** The three per-attack playbooks were merged into
-   `playbooks/incident-response.md`; the dashboard's playbook view resolves every
-   rule id to it, and a build-time sync keeps a single source of truth (the
-   `frontend/public/playbooks/` copy is generated and git-ignored).
+1. **One playbook per rule, one copy.** The three per-attack playbooks were first
+   merged into a single `playbooks/incident-response.md`; they were later
+   re-split so every rule has its own standalone playbook (the alert page loads
+   the one for the rule that fired). `incident-response.md` is now the **umbrella**
+   (platform model, universal steps, index); `frontend/src/playbookMap.js` maps
+   each rule to its file with a fallback to the umbrella, and the build-time sync
+   keeps a single authored copy of each file (`frontend/public/playbooks/` is
+   generated and git-ignored).
 2. **Off-box security coverage is automated.** Rather than only narrate the
    security review, `backend/tests/test_security.py` asserts the controls
    (parameterized filters, authz/IDOR, JWT expiry, evidence outside the webroot,
