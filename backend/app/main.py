@@ -1,5 +1,12 @@
 from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session
+import sys
+from pathlib import Path
+
+# Add project root to sys.path to import mini_soc_config
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root))
+
 from mini_soc_config import evidence_dir, get_list
 from .dependencies import require_role 
 from .database import get_db
@@ -101,6 +108,11 @@ def root():
     return {
         "message": "Mini SOC Platform API is running"
     }
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/users")
