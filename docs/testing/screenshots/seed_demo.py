@@ -15,7 +15,8 @@ By default it builds a throwaway SQLite database
 
 The detection engine only evaluates events within its widest rule window
 (300 s), so every event is stamped within the last few minutes. The script is
-safe to re-run: it first removes previous demo data for the demo source.
+safe to re-run: it first removes previous demo data for the demo source, and it
+reconciles the schema of a pre-existing database with the current models.
 """
 
 from __future__ import annotations
