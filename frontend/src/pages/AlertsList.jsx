@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAlerts } from "../api/alerts";
+import { playbookFor } from "../playbookMap";
 import { formatDateTime } from "../utils/format";
 
 const SEVERITY_OPTIONS = ["", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -184,7 +185,7 @@ export default function AlertsList() {
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="overflow-x-auto rounded-lg border border-slate-800">
-        <table className="w-full min-w-[52rem] text-left text-sm">
+        <table className="w-full min-w-[58rem] text-left text-sm">
           <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
             <tr>
               <th className="px-4 py-3">ID</th>
@@ -193,12 +194,13 @@ export default function AlertsList() {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Source IP</th>
               <th className="px-4 py-3">Last seen</th>
+              <th className="px-4 py-3">Playbook</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
             {items.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-4 py-8 text-center text-slate-500">
+                <td colSpan="7" className="px-4 py-8 text-center text-slate-500">
                   No alerts match these filters.
                 </td>
               </tr>
@@ -235,6 +237,31 @@ export default function AlertsList() {
                   <td className="px-4 py-3 font-mono text-xs">{alert.src_ip}</td>
                   <td className="px-4 py-3 text-xs text-slate-400">
                     {formatDateTime(alert.last_seen)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <a
+                      href={`/playbooks/${playbookFor(alert.rule_id)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Response playbook for ${alert.rule_id}`}
+                      className="inline-flex items-center gap-1.5 text-xs text-sky-400 hover:underline"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                      </svg>
+                      Playbook
+                    </a>
                   </td>
                 </tr>
               ))

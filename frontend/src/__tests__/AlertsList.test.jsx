@@ -57,4 +57,51 @@ describe("AlertsList", () => {
       )
     );
   });
+
+  it("links each alert row to its rule's playbook", async () => {
+    getAlerts.mockResolvedValue({
+      data: {
+        items: [
+          {
+            alert_id: 7,
+            title: "SSH brute force",
+            severity: "HIGH",
+            status: "NEW",
+            src_ip: "198.51.100.10",
+            last_seen: "2026-10-18T12:00:00Z",
+            rule_id: "SSH-BF-001",
+          },
+          {
+            alert_id: 8,
+            title: "Unknown rule",
+            severity: "LOW",
+            status: "NEW",
+            src_ip: "198.51.100.11",
+            last_seen: "2026-10-18T12:05:00Z",
+            rule_id: "NEW-RULE-999",
+          },
+        ],
+        total: 2,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <AlertsList />
+      </MemoryRouter>
+    );
+
+    // Known rule resolves to its own playbook file...
+    const mapped = await screen.findByTitle(
+      "Response playbook for SSH-BF-001"
+    );
+    expect(mapped).toHaveAttribute("href", "/playbooks/ssh-brute-force.md");
+
+    // ...and an unmapped rule falls back to the umbrella playbook.
+    const fallback = screen.getByTitle("Response playbook for NEW-RULE-999");
+    expect(fallback).toHaveAttribute(
+      "href",
+      "/playbooks/incident-response.md"
+    );
+  });
 });
