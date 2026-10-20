@@ -94,6 +94,32 @@ def test_config_env_overrides_api_key(tmp_path, monkeypatch):
     assert load_config(path).api_key == "secret-key"
 
 
+def test_config_parses_multiline_start(tmp_path, monkeypatch):
+    _clean_env(monkeypatch)
+    path = _write_config(
+        tmp_path,
+        files=[
+            {
+                "path": "/var/log/nginx/error.log",
+                "log_type": "nginx_error",
+                "multiline_start": r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[",
+            }
+        ],
+    )
+
+    source = load_config(path).files[0]
+
+    assert source.log_type == "nginx_error"
+    assert source.multiline_start == r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \["
+
+
+def test_config_multiline_start_defaults_to_none(tmp_path, monkeypatch):
+    _clean_env(monkeypatch)
+    path = _write_config(tmp_path)
+
+    assert load_config(path).files[0].multiline_start is None
+
+
 def test_config_missing_file_raises():
     with pytest.raises(FileNotFoundError):
         load_config("/nonexistent/agent.yaml")
@@ -204,6 +230,144 @@ def test_rotation_drains_old_then_reads_new(tmp_path):
 
     assert tailer.poll() == ["b", "c"]
     assert tailer.poll() == []
+
+
+# --------------------------------------------------------------------------- #
+# Multi-line join (nginx error log: PHP FastCGI stack traces)
+# --------------------------------------------------------------------------- #
+NGINX_START = r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \["
+
+HEADER = (
+    '2026/10/20 10:56:10 [error] 1769#1769: *19 FastCGI sent in stderr: '
+    '"PHP message: PHP Warning:  include(../../etc/passwd): Failed to open '
+    'stream: No such file or directory in /var/www/dvwa/login.php on line 8'
+)
+CONTINUATION = [
+    "Stack trace:",
+    "#0 /var/www/dvwa/login.php(8): dvwaDatabaseConnect()",
+    "#1 {main}",
+    '  thrown in /var/www/dvwa/dvwa/includes/dvwaPage.inc.php on line 569" '
+    "while reading response header from upstream, client: 127.0.0.1",
+]
+SECOND = (
+    '2026/10/20 10:57:00 [error] 1770#1770: *20 open() "/nope" failed '
+    "(2: No such file or directory)"
+)
+
+
+def test_multiline_join_folds_continuation_lines(tmp_path):
+    log = tmp_path / "error.log"
+    body = "\n".join([HEADER, *CONTINUATION, SECOND]) + "\n"
+    log.write_bytes(body.encode())
+
+    tailer = FileTailer(
+        str(log),
+        "nginx_error",
+        OffsetStore(str(tmp_path / "s.json")),
+        multiline_start=NGINX_START,
+    )
+
+    # Both headers were read in one poll: the first entry (header + 4
+    # continuation lines) is complete and released; the second is held pending.
+    assert tailer.poll() == ["\n".join([HEADER, *CONTINUATION])]
+    # An idle poll releases the trailing entry.
+    assert tailer.poll() == [SECOND]
+
+
+def test_multiline_without_flag_is_unchanged(tmp_path):
+    log = tmp_path / "error.log"
+    log.write_bytes(("\n".join([HEADER, *CONTINUATION]) + "\n").encode())
+
+    tailer = FileTailer(
+        str(log), "nginx_error", OffsetStore(str(tmp_path / "s.json"))
+    )
+
+    # Default behaviour: every physical line is emitted separately.
+    assert tailer.poll() == [HEADER, *CONTINUATION]
+
+
+def test_multiline_entry_split_across_polls_is_assembled(tmp_path):
+    log = tmp_path / "error.log"
+    log.write_bytes((HEADER + "\n").encode())
+
+    tailer = FileTailer(
+        str(log),
+        "nginx_error",
+        OffsetStore(str(tmp_path / "s.json")),
+        multiline_start=NGINX_START,
+    )
+
+    # Header alone: bytes were read, so the entry may still be growing - held.
+    assert tailer.poll() == []
+
+    # A later poll reads the continuation lines: still held.
+    with log.open("ab") as handle:
+        handle.write(("\n".join(CONTINUATION) + "\n").encode())
+
+    assert tailer.poll() == []
+
+    # An idle poll (no new bytes) proves the entry complete and releases it,
+    # with the continuation lines folded in.
+    assert tailer.poll() == ["\n".join([HEADER, *CONTINUATION])]
+
+
+def test_multiline_idle_flush_releases_trailing_entry(tmp_path):
+    log = tmp_path / "error.log"
+    log.write_bytes((HEADER + "\n").encode())
+
+    tailer = FileTailer(
+        str(log),
+        "nginx_error",
+        OffsetStore(str(tmp_path / "s.json")),
+        multiline_start=NGINX_START,
+    )
+
+    assert tailer.poll() == []   # header read, entry held
+    assert tailer.poll() == [HEADER]  # idle poll releases it
+    assert tailer.poll() == []   # no duplicate
+
+
+def test_multiline_flush_pending_emits_trailing_entry(tmp_path):
+    log = tmp_path / "error.log"
+    log.write_bytes((HEADER + "\n").encode())
+
+    tailer = FileTailer(
+        str(log),
+        "nginx_error",
+        OffsetStore(str(tmp_path / "s.json")),
+        multiline_start=NGINX_START,
+    )
+
+    assert tailer.poll() == []
+    assert tailer.flush_pending() == [HEADER]
+    # Flushing twice must not duplicate the entry.
+    assert tailer.flush_pending() == []
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows cannot rename a file while the agent holds it open",
+)
+def test_multiline_rotation_does_not_merge_across_files(tmp_path):
+    log = tmp_path / "error.log"
+    log.write_bytes((HEADER + "\n").encode())
+
+    tailer = FileTailer(
+        str(log),
+        "nginx_error",
+        OffsetStore(str(tmp_path / "s.json")),
+        multiline_start=NGINX_START,
+    )
+    assert tailer.poll() == []  # header held pending
+
+    rotated = tmp_path / "error.log.1"
+    os.replace(log, rotated)
+    log.write_bytes((SECOND + "\n").encode())
+
+    # The old file's pending entry is emitted before the new file's first line,
+    # and the new file's first line is now the held entry.
+    assert tailer.poll() == [HEADER]
+    assert tailer.poll() == [SECOND]
 
 
 # --------------------------------------------------------------------------- #

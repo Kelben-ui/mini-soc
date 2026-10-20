@@ -12,7 +12,12 @@ LOG_PATTERN = re.compile(
     r'\[(?P<level>\w+)\] '
     r'(?P<pid>\d+)#(?P<tid>\d+): '
     r'\*(?P<connection>\d+) '
-    r'(?P<message>.*)$'
+    r'(?P<message>.*)$',
+    # The agent joins a multi-line entry (header + PHP FastCGI stack trace) into
+    # a single string, so `message` must be able to span newlines.  Without
+    # DOTALL, `.` stops at the first "\n" and `$` never matches, so the whole
+    # entry is rejected - which is exactly the 422 this parser must not cause.
+    re.DOTALL,
 )
 
 

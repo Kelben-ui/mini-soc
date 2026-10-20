@@ -77,6 +77,7 @@ def run(config: AgentConfig, stop_event: threading.Event | None = None) -> None:
             log_type=source.log_type,
             store=store,
             poll_seconds=config.poll_seconds,
+            multiline_start=source.multiline_start,
         )
         thread = threading.Thread(
             target=file_worker,

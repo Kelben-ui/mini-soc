@@ -21,7 +21,7 @@ formats.
 | File | `log_type` | Produces |
 |---|---|---|
 | `parsers/nginx_access_parser.py` | `nginx_access` | `category: web`, `action: http_request` (+ decoded `uri`/`query`/`body`). |
-| `collector/parsers/nginx_error_parser.py` | `nginx_error` | nginx error events (naive local timestamps converted to UTC — see [Timestamps](#timestamps)). |
+| `collector/parsers/nginx_error_parser.py` | `nginx_error` | nginx error events (naive local timestamps converted to UTC — see [Timestamps](#timestamps); multi-line entries joined — see [Multi-line entries](#multi-line-entries)). |
 | `collector/parsers/auth_parser.py` | `auth` | `ssh_login` success/failure events. |
 | `collector/parsers/firewall_parser.py` | `firewall` | nftables `SOC_DROP:`/`SOC_ACCEPT:`/`SOC_OUT:` → network events. |
 | `collector/parsers/suricata_parser.py` | `mini_soc_ids` | Suricata-style JSON from the custom IDS: generic alerts → `ids`/`ids_alert`; port scan (9000001) → `network`/`port_scan`; DNS (9000004) → `dns`/`unusual_dns`; outbound (9000005) → `network`/`unusual_outbound`. |
@@ -58,6 +58,34 @@ see [`../docs/testing/local-wsl-run.md`](../docs/testing/local-wsl-run.md).
 `collector/tests/test_nginx_error_parser.py` pins this down with a
 `TZ=Africa/Lagos` regression test plus a "no event may be dated in the
 future" assertion.
+
+### Multi-line entries
+
+nginx writes PHP FastCGI failures to `error.log` as a **multi-line** record: a
+timestamped header line followed by a `Stack trace:` block:
+
+```
+2026/10/20 10:56:10 [error] 1769#1769: *19 FastCGI sent in stderr: "PHP message: ...
+Stack trace:
+#0 /var/www/dvwa/login.php(8): dvwaDatabaseConnect()
+#1 {main}
+  thrown in ... on line 569" while reading response header from upstream, ...
+```
+
+The agent joins these into a single string before sending (an optional
+`multiline_start` regex per file source in `agent.yaml` — see
+[`../agents/log_agent/`](../agents/log_agent/)). Two consequences for this
+service:
+
+- `nginx_error_parser.py` compiles its pattern with `re.DOTALL` so `message`
+  can span the joined newlines. Without it, `.` stopped at the first `\n` and
+  `$` never matched, so the whole entry was rejected.
+- Unparseable batches get a `422` **and** a log line naming the first offending
+  line (`[collector] 422 could not parse log_type=...`), so a format change is
+  diagnosable instead of silent.
+
+`collector/tests/test_nginx_error_parser.py::test_multiline_entry_is_parsed`
+covers the joined entry.
 
 ## Tests
 

@@ -25,10 +25,20 @@ DEFAULT_IDS_SERVICE = "mini-soc-ids"
 
 @dataclass
 class FileSource:
-    """A log file the agent tails line by line."""
+    """A log file the agent tails line by line.
+
+    ``multiline_start`` (optional) is a regex that identifies the *first* line
+    of a logical entry.  When set, physical lines that do not match it are
+    continuation lines and are joined onto the entry they belong to
+    (newline-separated) before being batched.  This keeps multi-line records -
+    e.g. the PHP FastCGI stack traces nginx writes to ``error.log`` - intact so
+    the collector parser sees one complete entry instead of orphaned
+    continuation lines (which it cannot parse and would reject with HTTP 422).
+    """
 
     path: str
     log_type: str
+    multiline_start: str | None = None
 
 
 @dataclass
@@ -144,7 +154,15 @@ def _resolve_files(raw: dict) -> list[FileSource]:
         if not path or not log_type:
             raise ValueError("every file source needs 'path' and 'log_type'")
 
-        sources.append(FileSource(path=path, log_type=log_type))
+        multiline_start = entry.get("multiline_start")
+
+        sources.append(
+            FileSource(
+                path=path,
+                log_type=log_type,
+                multiline_start=multiline_start,
+            )
+        )
 
     return sources
 

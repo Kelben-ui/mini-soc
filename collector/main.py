@@ -112,6 +112,7 @@ def ingest(data: dict, x_api_key: str | None = Header(default=None)):
         )
 
     events = []
+    unparsed = []
 
     for line in lines:
         if not isinstance(line, str) or not line.strip():
@@ -121,8 +122,21 @@ def ingest(data: dict, x_api_key: str | None = Header(default=None)):
 
         if event is not None:
             events.append(event)
+        else:
+            unparsed.append(line)
 
     if not events:
+        # Log the first offending line so an operator can see *why* the batch
+        # was rejected (a wrong log_type/path mapping, a format change, or a
+        # partial multi-line record) instead of a bare 422.
+        if unparsed:
+            sample = unparsed[0].splitlines()[0][:200]
+            print(
+                f"[collector] 422 could not parse log_type={log_type!r} "
+                f"({len(unparsed)}/{len(lines)} lines unparsed); "
+                f"first: {sample!r}"
+            )
+
         raise HTTPException(
             status_code=422,
             detail="Could not parse log",

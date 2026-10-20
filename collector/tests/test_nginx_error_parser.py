@@ -76,6 +76,36 @@ def test_malformed_lines_return_none():
     assert parse("2026/10/05 14:32:07 [error] no pid here") is None
 
 
+MULTILINE_ENTRY = (
+    '2026/10/20 10:56:10 [error] 1769#1769: *19 FastCGI sent in stderr: '
+    '"PHP message: PHP Warning: include(../../etc/passwd): Failed to open '
+    'stream: No such file or directory in /var/www/dvwa/login.php on line 8\n'
+    'Stack trace:\n'
+    '#0 /var/www/dvwa/login.php(8): dvwaDatabaseConnect()\n'
+    '#1 {main}\n'
+    '  thrown in /var/www/dvwa/dvwa/includes/dvwaPage.inc.php on line 569" '
+    'while reading response header from upstream, client: 127.0.0.1'
+)
+
+
+def test_multiline_entry_is_parsed():
+    """Regression: the agent joins a multi-line entry before sending it.
+
+    With ``.*$`` and no DOTALL the message could not span newlines, so `$`
+    never matched and the whole entry was rejected - the collector then
+    answered 422 and the continuation lines were lost.
+    """
+    result = parse(MULTILINE_ENTRY)
+
+    assert result is not None
+    assert result["log_type"] == "nginx_error"
+    assert result["details"]["pid"] == 1769
+    assert result["details"]["connection"] == 19
+    # The stack trace is preserved inside the single message field.
+    assert "Stack trace:" in result["details"]["message"]
+    assert "dvwaDatabaseConnect()" in result["details"]["message"]
+
+
 def test_error_timestamp_is_not_future_dated_in_non_utc_tz():
     """Regression: nginx error timestamps are host-local, not UTC.
 

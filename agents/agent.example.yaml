@@ -39,12 +39,18 @@ poll_seconds: 1
 buffer_dir: "/var/lib/mini-soc/agent"
 
 # --- File sources (tasks 3.2, 3.3, 3.6) ------------------------------------
+# `multiline_start` (optional) is a regex marking the first line of a logical
+# entry.  Lines that do not match are joined onto the preceding match, so a
+# multi-line record reaches the collector as one entry.  nginx writes PHP
+# FastCGI stack traces this way in error.log; without the join those
+# continuation lines parse to nothing and the collector rejects them (HTTP 422).
 files:
   - path: "/var/log/nginx/access.log"
     log_type: "nginx_access"
 
   - path: "/var/log/nginx/error.log"
     log_type: "nginx_error"
+    multiline_start: '^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \['
 
   - path: "/var/log/auth.log"
     log_type: "auth"

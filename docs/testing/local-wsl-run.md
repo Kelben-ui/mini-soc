@@ -305,3 +305,24 @@ the dashboard API. The harness reports **24/24 checks passing**.
 | 5 | Authenticated mode in `sqli-xss.sh` | ✅ done (5.4) |
 | 6 | `.gitattributes` for shell endings | ✅ already present (5.3) |
 | 7 | Checked-in repeatable harness | ✅ `docs/testing/wsl-local/` |
+| 8 | Multi-line nginx error entries causing `/ingest` 422 | ✅ agent-side join (5.5) |
+
+### 5.5 Multi-line nginx error entries rejected as `422`
+
+The nginx **error** log carries multi-line PHP FastCGI records (a header line
+followed by a `Stack trace:`/`#0 ...` continuation block). The agent tailed
+physical lines, so the continuation lines parsed to `None`; a 2-second batch
+containing only those lines made the collector answer `422`, and the agent
+treated the 4xx as delivered — dropping the lines.
+
+**Fix:** an optional per-source `multiline_start` regex (set for `error.log` to
+the nginx header pattern) makes `agents/log_agent/tailer.py` fold continuation
+lines onto their header, releasing a held entry on an idle poll so a trailing
+record still ships. `collector/parsers/nginx_error_parser.py` compiles with
+`re.DOTALL` so `message` can span the joined newlines, and the collector logs a
+sample of the offending line on every 422.
+
+**Regression guard:** `agents/log_agent/tests/test_agent.py` covers the join,
+cross-poll assembly, idle flush, rotation and shutdown flush;
+`collector/tests/test_nginx_error_parser.py::test_multiline_entry_is_parsed`
+covers the DOTALL fix.

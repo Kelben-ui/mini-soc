@@ -65,11 +65,16 @@ def test_unsupported_log_type_returns_400():
     assert exc.value.status_code == 400
 
 
-def test_unparseable_line_returns_422():
+def test_unparseable_line_returns_422(capsys):
     with pytest.raises(HTTPException) as exc:
         main.ingest({"log_type": "nginx_access", "raw": "garbage"}, x_api_key=KEY)
 
     assert exc.value.status_code == 422
+
+    # The rejection is logged with a sample of the offending line.
+    out = capsys.readouterr().out
+    assert "422 could not parse" in out
+    assert "garbage" in out
 
 
 def test_bad_lines_type_returns_400():

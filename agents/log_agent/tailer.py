@@ -18,6 +18,7 @@ JournalTailer (task 3.6)
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import threading
 import time
@@ -32,11 +33,18 @@ class FileTailer:
         log_type: str,
         store: OffsetStore,
         poll_seconds: float = 1.0,
+        multiline_start: str | None = None,
     ):
         self.path = path
         self.log_type = log_type
         self.store = store
         self.poll_seconds = poll_seconds
+
+        # When set, physical lines that do not match this regex are folded onto
+        # the previous matching line (joined with "\n") so a multi-line record
+        # reaches the collector as one entry.
+        self._multiline_start = re.compile(multiline_start) if multiline_start else None
+        self._pending: str | None = None
 
         self._fd = None
         self._inode: int | None = None
@@ -50,6 +58,47 @@ class FileTailer:
             finally:
                 self._fd = None
 
+    def flush_pending(self) -> list[str]:
+        """Emit a held multi-line entry (e.g. at shutdown or on rotation).
+
+        Continuation lines are withheld until the *next* start line proves the
+        record is complete; without this the tail of a file that ends mid-entry
+        would never be sent.
+        """
+        if self._pending is None:
+            return []
+
+        line = self._pending
+        self._pending = None
+
+        return [line]
+
+    def _group(self, lines: list[str]) -> list[str]:
+        """Fold continuation lines onto their preceding start line.
+
+        Only used when ``multiline_start`` is configured.  A line matching the
+        start pattern closes the current entry and opens a new one; any other
+        line is appended to the open entry.  The final entry stays pending until
+        the next start line (or :meth:`flush_pending`), so an entry split across
+        two polls is still assembled correctly.
+        """
+        complete: list[str] = []
+
+        for line in lines:
+            if self._multiline_start.match(line):
+                if self._pending is not None:
+                    complete.append(self._pending)
+
+                self._pending = line
+            elif self._pending is not None:
+                self._pending = f"{self._pending}\n{line}"
+            else:
+                # A continuation line with no open entry (e.g. the agent
+                # started mid-record): keep it rather than dropping it.
+                self._pending = line
+
+        return complete
+
     # -- reading --------------------------------------------------------
     def poll(self) -> list[str]:
         """Return any complete lines appended since the last call."""
@@ -62,8 +111,10 @@ class FileTailer:
             self._open_initial(stat)
         elif stat.st_ino != self._inode:
             # Rotation: drain what is left of the old file, then start the
-            # new file from byte 0.
-            drained = self._read_new()
+            # new file from byte 0.  The old file's trailing pending entry must
+            # be emitted before the new stream starts, otherwise it would be
+            # merged with the first line of the new file.
+            drained = self._read_new() + self.flush_pending()
             self.close()
             self._open_at(stat, 0)
             return drained + self._read_new()
@@ -72,7 +123,20 @@ class FileTailer:
             self.close()
             self._open_at(stat, 0)
 
-        return self._read_new()
+        offset_before = self._offset
+        lines = self._read_new()
+        read_anything = self._offset != offset_before
+
+        # Idle flush: a multi-line entry is only released when the *next* start
+        # line arrives, so the final entry before a quiet period would otherwise
+        # sit in `_pending` indefinitely (it would only ship at shutdown).  Once
+        # a poll reads no new bytes the entry is complete and can be emitted.
+        # This must NOT fire on a poll that read continuation lines: those bytes
+        # prove the entry is still being written.
+        if not read_anything:
+            return self.flush_pending()
+
+        return lines
 
     # -- internals ------------------------------------------------------
     def _open_initial(self, stat) -> None:
@@ -135,6 +199,9 @@ class FileTailer:
 
         self._offset += len(data)
         self.store.set(self.path, self._inode, self._offset)
+
+        if self._multiline_start is not None:
+            return self._group(lines)
 
         return lines
 
@@ -210,6 +277,11 @@ def file_worker(
             print(f"[agent] {tailer.path}: {exc}")
 
         stop_event.wait(tailer.poll_seconds)
+
+    # Emit any multi-line entry still held at shutdown so the final record is
+    # not lost (the next line that would have completed it never arrives).
+    for line in tailer.flush_pending():
+        on_line(tailer.log_type, line)
 
     tailer.close()
 
