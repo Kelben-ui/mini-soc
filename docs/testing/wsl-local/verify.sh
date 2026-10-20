@@ -6,11 +6,26 @@
 #
 #   APP_DIR=/root/mini-soc SOC_USER=admin SOC_PASS=... bash verify.sh delta
 #
+# If a credentials file exists it is sourced first, so a lab whose admin
+# password is not the default does not have to export SOC_PASS on every call:
+#
+#   /etc/mini-soc/lab-creds.env   SOC_USER=... / SOC_PASS=...
+#
+# Environment variables still win over the file.  The file is deliberately
+# outside the repo so no secret is committed.
+#
 # Sub-commands:
 #   baseline   record the current event/alert counts
 #   delta      show counts now vs the last baseline, plus the newest alerts
 #   query [lt] show the newest events, optionally filtered by log_type
 set -uo pipefail
+
+CREDS_FILE="${CREDS_FILE:-/etc/mini-soc/lab-creds.env}"
+
+if [ -r "$CREDS_FILE" ]; then
+    # shellcheck source=/dev/null
+    . "$CREDS_FILE"
+fi
 
 APP_DIR="${APP_DIR:-/root/mini-soc}"
 SOC_USER="${SOC_USER:-admin}"
