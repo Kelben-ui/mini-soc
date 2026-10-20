@@ -390,16 +390,30 @@ Expect `svcuser`.
 
 ### 5.9 On-box network rules (run in **WSL**, not Kali)
 
-```bash
-# NET-OUTBOUND-001 — a new outbound connection is logged as SOC_OUT:
-curl -s https://example.com -o /dev/null
+These two run **on the monitored host**, because the IDS sniffs them locally.
 
-# DNS-ANOMALY-001 — an unusual DNS query
-dig @8.8.8.8 this-is-a-very-long-anomalous-dns-label-xxxxxxxx.example.com
+```bash
+# NET-OUTBOUND-001 — an outbound connection to a port NOT in outbound_allow
+# ([53, 80, 443, 123]) is logged as SOC_OUT.  Port 4444 is deliberately off-list:
+./outbound-conn.sh 8.8.8.8 4444
+
+# DNS-ANOMALY-001 — a query label longer than IDS_DNS_MAX_LABEL (50) is the
+# classic DNS-tunnelling shape.  Use the bundled script: it works with dig,
+# nslookup, or a bare python resolver (no DNS tools required):
+./dns-tunnel-sim.sh 6
 ```
 
-**Alerts:** `NET-OUTBOUND-001` and `DNS-ANOMALY-001` (if enabled in your rule
-set).
+**Alerts:** `NET-OUTBOUND-001` and `DNS-ANOMALY-001`.
+
+> Do **not** hand-roll the DNS test with a short label such as
+> `this-is-a-very-long-anomalous-dns-label-xxxxxxxx` — that label is only 48
+> characters, and the rule needs **more than 50**, so it would never fire.
+> `dns-tunnel-sim.sh` builds a 60-character label for you.
+
+> In WSL2 the DNS sniffer must watch the **loopback** interface: `resolv.conf`
+> points at `nameserver 10.255.255.254`, which WSL2 answers locally, so the
+> query never reaches `eth0`. The IDS enumerates all up interfaces and captures
+> on `lo` as well, which is what makes `DNS-ANOMALY-001` visible here.
 
 ---
 

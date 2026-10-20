@@ -391,6 +391,123 @@ def test_parse_packet_ignores_other_ports():
     assert parse_packet(frame) is None
 
 
+# --- sniffer interface selection (4.5) --------------------------------------
+#
+# The AF_PACKET wildcard bind (an empty interface name) is not portable: on
+# WSL2 it fails with ENODEV and the DNS sniffer thread died on startup without
+# a word, so no dns_query event was ever produced.  These cover the replacement
+# interface enumeration and the per-interface binding.
+
+
+def test_list_interfaces_never_returns_the_wildcard():
+    from ids.dns_sniffer import list_interfaces
+
+    names = list_interfaces()
+
+    assert names, "at least one interface must be sniffable"
+    # "" / "any" are exactly what breaks on WSL2.
+    assert "" not in names
+    assert "any" not in names
+
+
+def test_list_interfaces_prefers_real_interfaces_over_loopback():
+    import ids.dns_sniffer as sniffer
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        sniffer.socket, "if_nameindex", lambda: [(1, "lo"), (2, "eth0")]
+    )
+    monkeypatch.setattr(sniffer, "_interface_flags", lambda name: sniffer._IFF_UP)
+
+    try:
+        names = sniffer.list_interfaces()
+    finally:
+        monkeypatch.undo()
+
+    # Loopback is still watched (a stub resolver sends there) but it comes last.
+    assert names == ["eth0", "lo"]
+
+
+def test_list_interfaces_skips_down_interfaces():
+    import ids.dns_sniffer as sniffer
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        sniffer.socket, "if_nameindex", lambda: [(1, "lo"), (2, "eth0")]
+    )
+    # eth0 is administratively down; only lo has IFF_UP.
+    monkeypatch.setattr(
+        sniffer, "_interface_flags", lambda name: sniffer._IFF_UP if name == "lo" else 0
+    )
+
+    try:
+        names = sniffer.list_interfaces()
+    finally:
+        monkeypatch.undo()
+
+    assert names == ["lo"]
+
+
+def test_sniff_binds_every_selected_interface():
+    """sniff() must bind a real interface name, never the wildcard."""
+    import ids.dns_sniffer as sniffer
+
+    bound = []
+    monkeypatch = pytest.MonkeyPatch()
+
+    class FakeSocket:
+        def __init__(self):
+            self.closed = False
+
+        def bind(self, address):
+            bound.append(address)
+
+        def recv(self, size):
+            raise OSError("no more frames")
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(sniffer.socket, "socket", lambda *a, **k: FakeSocket())
+    monkeypatch.setattr(sniffer, "list_interfaces", lambda: ["eth0", "lo"])
+    monkeypatch.setattr(sniffer.select, "select", lambda *a, **k: ([], [], []))
+
+    try:
+        sniffer.sniff(lambda packet: None, None, lambda: True)
+    finally:
+        monkeypatch.undo()
+
+    assert bound == [("eth0", 0), ("lo", 0)]
+
+
+def test_sniff_honours_an_explicit_interface():
+    import ids.dns_sniffer as sniffer
+
+    bound = []
+    monkeypatch = pytest.MonkeyPatch()
+
+    class FakeSocket:
+        def bind(self, address):
+            bound.append(address)
+
+        def recv(self, size):
+            raise OSError
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sniffer.socket, "socket", lambda *a, **k: FakeSocket())
+    monkeypatch.setattr(sniffer.select, "select", lambda *a, **k: ([], [], []))
+
+    try:
+        sniffer.sniff(lambda packet: None, "eth0", lambda: True)
+    finally:
+        monkeypatch.undo()
+
+    assert bound == [("eth0", 0)]
+
+
+
 # --- output feeds the collector contract (4.3 / 4.11) -----------------------
 
 

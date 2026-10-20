@@ -12,6 +12,7 @@ Linux raw socket.
 
 from __future__ import annotations
 
+import select
 import socket
 import struct
 
@@ -134,32 +135,111 @@ def parse_packet(frame: bytes):
     }
 
 
-def sniff(handle_packet, interface: str | None = None, should_stop=None):
-    """Sniff UDP/53 frames until ``should_stop`` returns True.
+def list_interfaces() -> list[str]:
+    """Return the names of the up, non-loopback interfaces to sniff.
 
-    ``handle_packet`` receives the parsed packet dict.  Any socket/privilege
-    error is raised to the caller so it can be logged and the thread ended.
+    The AF_PACKET wildcard bind (an empty interface name, or ``"any"``) is not
+    portable: on kernels where WSL2 and several container runtimes are enabled
+    it fails with ``ENODEV`` ("No such device"), which would silently kill the
+    sniffer.  Enumerating real interface names avoids the wildcard entirely.
+
+    Falls back to ``["lo"]`` when nothing else is up so the caller still gets a
+    usable socket instead of an immediate failure.
     """
+    names: list[str] = []
+
+    try:
+        names = [name for _, name in socket.if_nameindex()]
+    except OSError:
+        names = []
+
+    if not names:
+        return ["lo"]
+
+    usable = []
+
+    for name in names:
+        try:
+            flags = _interface_flags(name)
+        except OSError:
+            continue
+
+        # Skip interfaces that are administratively down.
+        if not flags & _IFF_UP:
+            continue
+
+        usable.append(name)
+
+    if not usable:
+        return ["lo"]
+
+    # Sniff the loopback last so real traffic is reported first.
+    usable.sort(key=lambda name: name == "lo")
+
+    return usable
+
+
+def _interface_flags(name: str) -> int:
+    """Return the SIOCGIFFLAGS value for ``name``."""
+    import fcntl
+
+    request = struct.pack("256s", name.encode()[:15])
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        return struct.unpack("H", fcntl.ioctl(probe, 0x8913, request)[16:18])[0]
+
+
+_IFF_UP = 0x1
+
+
+def _open_capture_socket(interface: str) -> socket.socket:
+    """Open a CAP_NET_RAW AF_PACKET socket bound to ``interface``."""
     handle = socket.socket(
         socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_IP)
     )
 
     try:
-        handle.bind((interface or "", 0))
+        handle.bind((interface, 0))
     except OSError:
-        # Binding an interface that does not exist; fall back to all.
-        handle.bind(("", 0))
+        handle.close()
+        raise
+
+    return handle
+
+
+def sniff(handle_packet, interface: str | None = None, should_stop=None):
+    """Sniff UDP/53 frames until ``should_stop`` returns True.
+
+    ``handle_packet`` receives the parsed packet dict.  Any socket/privilege
+    error is raised to the caller so it can be logged and the thread ended.
+
+    When ``interface`` is None every up interface is watched (see
+    :func:`list_interfaces`); frames from the loopback interface are delivered
+    too, which is where a local stub resolver such as ``systemd-resolved``
+    sends its queries.
+    """
+    interfaces = [interface] if interface else list_interfaces()
+
+    handles = [_open_capture_socket(name) for name in interfaces]
 
     try:
         while should_stop is None or not should_stop():
             try:
-                frame = handle.recv(65535)
+                readable, _, _ = select.select(handles, [], [], 1.0)
             except OSError:
                 continue
 
-            packet = parse_packet(frame)
+            for handle in readable:
+                try:
+                    frame = handle.recv(65535)
+                except OSError:
+                    continue
 
-            if packet is not None:
-                handle_packet(packet)
+                packet = parse_packet(frame)
+
+                if packet is not None:
+                    handle_packet(packet)
     finally:
-        handle.close()
+        for handle in handles:
+            handle.close()
+
