@@ -33,7 +33,7 @@ so it already routes to `192.168.1.41` with no extra configuration.
 |---|---|---|
 | `WIN_IP` | `ipconfig` on Windows (Wi-Fi adapter) | `192.168.1.41` |
 | `WSL_IP` | `wsl -d Ubuntu-24.04 -u root -- hostname -I` (first address) | `172.22.54.155` |
-| `<lab-admin-pw>` | the dashboard admin password you set for this lab | — |
+| `<lab-admin-pw>` | the dashboard admin password (this lab: `localtest-admin-1`) | `localtest-admin-1` |
 
 **`WSL_IP` changes on every WSL restart.** Re-check it and re-run the portproxy
 step (Phase 2) after any reboot.
@@ -109,12 +109,16 @@ If any service is not `active`, re-provision (idempotent) as root — **no `sudo
 needed when you are already root**:
 
 ```bash
-cd /home/ubuntu/mini-soc && deploy/install.sh
+cd /root/mini-soc && deploy/install.sh
 ```
 
-> The running stack lives at **`/home/ubuntu/mini-soc`**. Your *editing* checkout
-> is the Windows mount (`/mnt/c/Users/-kelsey-/Desktop/mini-soc`); changes there
-> do not reach the running stack until `deploy/update.sh` (or `install.sh`) runs.
+> The running stack lives at **`/root/mini-soc`** — every systemd unit's
+> `WorkingDirectory` and `ExecStart` point there, and only root can traverse
+> `/root`. Your *editing* checkout is the Windows mount
+> (`/mnt/c/Users/-kelsey-/Desktop/mini-soc`) and is what you push from; changes
+> there do not reach the running stack until `deploy/update.sh` (or
+> `install.sh`) runs. To sync quickly:
+> `git -C /root/mini-soc fetch origin main && git -C /root/mini-soc reset --hard origin/main`.
 
 ---
 
@@ -229,22 +233,26 @@ Expect three × `True`.
 ### Terminal B — WSL as root
 
 ```bash
-cd /home/ubuntu/mini-soc/docs/testing/wsl-local
-APP_DIR=/home/ubuntu/mini-soc ./verify.sh baseline
+cd /root/mini-soc/docs/testing/wsl-local
+./verify.sh baseline
 ```
 
-Expect a per-rule snapshot of current open-alert counts, written to a file.
-Record the rule keys — Phase 6 diffs against them.
+Expect a line like `baseline (events alerts): <N> <M>`, written to
+`~/.verify-baseline`. Phase 6 diffs against it — record the `alerts` figure.
 
 ### Terminal C — Kali
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://192.168.1.41/
-curl -sk -o /dev/null -w '%{http_code}\n' https://192.168.1.41/
+curl -s -o /dev/null -w 'dvwa=%{http_code}\n' http://192.168.1.41/dvwa/login.php
+curl -sk -o /dev/null -w 'dash=%{http_code}\n' https://192.168.1.41/
 ```
 
-Expect `200` (or `302`) for each. **If both hang or fail, stop and fix Phase 3** —
+Expect `dvwa=200` and `dash=200`. **If both hang or fail, stop and fix Phase 3** —
 nothing downstream will work.
+
+> A request to the bare root `http://192.168.1.41/` returns **403** — nginx
+> refuses a directory listing at `/var/www/`. That is normal; always use a real
+> path such as `/dvwa/login.php`.
 
 Then prepare the attack scripts:
 
@@ -252,15 +260,24 @@ Then prepare the attack scripts:
 git clone https://github.com/Kelben-ui/mini-soc.git ~/mini-soc   # or scp the folder
 cd ~/mini-soc/attack-sim
 cp target.conf.example target.conf
+chmod +x *.sh          # belt-and-braces; exec bits are now tracked in git
 ```
 
-Edit `target.conf`:
+If you already have the clone, update it instead — an old checkout predates the
+exec-bit fix and `./scanner-ua.sh` will fail with `Permission denied`:
 
 ```bash
-ALLOWED_TARGET=192.168.1.41
-DVWA_SCHEME=http
-DVWA_USER=admin
-DVWA_PASS=password
+cd ~/mini-soc && git pull
+cd attack-sim && chmod +x *.sh
+```
+
+Edit `target.conf` (keep the **quotes** — the scripts match the value exactly):
+
+```bash
+ALLOWED_TARGET="192.168.1.41"
+DVWA_SCHEME="http"
+DVWA_USER="admin"
+DVWA_PASS="password"
 ```
 
 ---
@@ -300,14 +317,21 @@ style User-Agents.
 
 ### 5.3 SQLi + XSS (authenticated) → `WEB-SQLI-001`, `WEB-XSS-001`
 
+`sqli-xss.sh` takes **two** arguments — `<target_ip> <attack_type>`:
+
 ```bash
-./sqli-xss.sh 192.168.1.41
+./sqli-xss.sh 192.168.1.41 sqli
+./sqli-xss.sh 192.168.1.41 xss
 ```
 
 Expect the script to log in, print that the session reached `/dvwa/index.php`,
 then fire payloads.
 
 **Alerts:** `WEB-SQLI-001` (HIGH) and `WEB-XSS-001` (MEDIUM), `src_ip = 192.168.1.x`.
+
+> Available attack types: `sqli`, `xss`, `cmdi`, `traversal`, `bruteforce`,
+> `all`. `./sqli-xss.sh 192.168.1.41 all` runs every one of them in a single
+> pass — the quickest way to exercise all the web rules.
 
 ### 5.4 Web login brute force → `WEB-BF-001` (HIGH)
 
@@ -323,17 +347,18 @@ token per attempt).
 ### 5.5 Command injection → `WEB-CMD-001` (HIGH)
 
 ```bash
-curl -s 'http://192.168.1.41/dvwa/vulnerabilities/exec/?ip=127.0.0.1;id&Submit=Submit' -o /dev/null
+./sqli-xss.sh 192.168.1.41 cmdi
 ```
 
-(The rule matches `;whoami`, `;id`, `&&cat`, etc., with or without a space.)
+(Or by hand: the rule matches `;whoami`, `;id`, `&&cat`, etc., with or without a
+space — e.g. `curl -s 'http://192.168.1.41/dvwa/vulnerabilities/exec/?ip=127.0.0.1;id&Submit=Submit' -o /dev/null`.)
 
 **Alert:** `WEB-CMD-001` (HIGH).
 
 ### 5.6 Path traversal / LFI → `WEB-LFI-001` (HIGH)
 
 ```bash
-curl -s 'http://192.168.1.41/dvwa/vulnerabilities/fi/?page=../../../../etc/passwd' -o /dev/null
+./sqli-xss.sh 192.168.1.41 traversal
 ```
 
 **Alert:** `WEB-LFI-001` (HIGH).
@@ -383,9 +408,14 @@ set).
 ### Terminal B — WSL as root
 
 ```bash
-cd /home/ubuntu/mini-soc/docs/testing/wsl-local
-APP_DIR=/home/ubuntu/mini-soc ./verify.sh delta
+cd /root/mini-soc/docs/testing/wsl-local
+./verify.sh delta
 ```
+
+> The harness lives under `/root`, which only root can traverse, so run it as
+> root (`wsl -d Ubuntu-24.04 -u root`). No password argument is needed: if
+> `/etc/mini-soc/lab-creds.env` exists it is sourced automatically. Otherwise
+> pass them inline: `SOC_PASS=<lab-admin-pw> ./verify.sh delta`.
 
 Expect an event/alert count line showing counts now vs the Phase 4 baseline, then
 a `--- latest alerts ---` list with `rule_id`, severity and `src_ip` for each
@@ -405,9 +435,9 @@ after  (events alerts): 12489 78
 `log_type` — the valid types are the log sources, not rule IDs:
 
 ```bash
-APP_DIR=/home/ubuntu/mini-soc ./verify.sh query auth
-APP_DIR=/home/ubuntu/mini-soc ./verify.sh query nginx_access
-APP_DIR=/home/ubuntu/mini-soc ./verify.sh query firewall
+./verify.sh query auth
+./verify.sh query nginx_access
+./verify.sh query firewall
 ```
 
 Expect rows for the `auth` (SSH) and `nginx_access` (web) traffic you generated.
@@ -425,7 +455,7 @@ Log in:
 
 ```
 Username: admin
-Password: <lab-admin-pw>
+Password: localtest-admin-1
 ```
 
 Expect the alerts list to show the HIGH/CRITICAL rules above, newest first.
