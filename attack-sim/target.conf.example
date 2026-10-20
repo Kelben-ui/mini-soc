@@ -10,3 +10,15 @@
 
 # The ONLY host the attack-sim scripts may run against.
 ALLOWED_TARGET="203.0.113.10"
+
+# DVWA credentials used by sqli-xss.sh (and recon-chain.sh, which calls it).
+# DVWA's setup script creates admin/password by default; change these if you
+# re-ran setup or rotated the password. They are lab-only throwaways — never
+# reuse them anywhere else. The login flow also fetches DVWA's CSRF
+# user_token automatically, so no manual token handling is needed.
+DVWA_USER="admin"
+DVWA_PASS="password"
+
+# Schemes the web scripts may use. Keep http unless you have terminated TLS on
+# the target; the lab serves DVWA over plain HTTP behind nginx.
+DVWA_SCHEME="http"

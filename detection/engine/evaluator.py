@@ -84,15 +84,30 @@ def matches_rule(event, rule):
 
     if regex_patterns:
         import re
-        for pat in regex_patterns:
-            try:
-                if not re.search(pat, search_text, re.IGNORECASE):
-                    return False
-            except Exception:
-                if str(pat).lower() not in search_text:
-                    return False
+
+        # A rule's ``regex`` list is a set of alternatives: any one match is
+        # enough, mirroring how ``contains`` is evaluated (``any``).  Requiring
+        # *every* pattern previously made multi-pattern rules such as
+        # WEB-BF-001 (DVWA's /login.php *or* /brute) impossible to satisfy.
+        if not any(_regex_search(pat, search_text) for pat in regex_patterns):
+            return False
 
     return True
+
+
+def _regex_search(pattern, text):
+    """Return True if ``pattern`` matches ``text``.
+
+    Falls back to a literal substring test when the configured pattern is not a
+    valid regular expression, so a typo in a rule degrades to a ``contains``
+    check instead of silently disabling the whole rule.
+    """
+    import re
+
+    try:
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    except Exception:
+        return str(pattern).lower() in text
 
 
 def get_threshold_events(events, rule):

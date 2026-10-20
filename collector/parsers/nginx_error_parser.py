@@ -34,7 +34,12 @@ def parse(line):
     except ValueError:
         return None
 
-    ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+    # nginx writes error-log timestamps in the host's LOCAL time with no
+    # offset (unlike $time_iso8601 in the access log). Interpret them as local
+    # time, then normalise to UTC: tagging a local time as UTC stores every
+    # error event offset into the future whenever the host TZ is not UTC, which
+    # also drags the detection window forward and suppresses alerts.
+    ts_dt = ts_dt.astimezone(timezone.utc)
 
     return {
         "event_id": str(uuid.uuid4()),

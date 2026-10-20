@@ -4,13 +4,21 @@ severity: HIGH
 category: web
 enabled: true
 
+# DVWA is the brute-force target: its login form is /dvwa/login.php and the
+# dedicated brute-force exercise posts to /dvwa/vulnerabilities/brute/. The
+# dashboard's own /login is a client-side SPA route, so it never appears in the
+# access log — matching it alone caught nothing.
 match:
   log_type: nginx_access
   category: web
   action: http_request
   details:
     method: POST
-    uri: /login
+
+# Any POST to a login/brute-force endpoint counts.
+regex:
+  - "/dvwa/login\\.php"
+  - "/dvwa/vulnerabilities/brute"
 
 threshold:
   count: 20

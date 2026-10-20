@@ -257,6 +257,19 @@ sed -e "s|@APP_DIR@|$APP_DIR|g" \
 ln -sf /etc/nginx/sites-available/mini-soc.conf /etc/nginx/sites-enabled/mini-soc.conf
 rm -f /etc/nginx/sites-enabled/default
 
+# The frozen `soc` log format must be defined exactly once, in the http block
+# of the main config. A site file that re-defines it (or a main config that
+# lacks it, e.g. the stock OS nginx.conf) breaks `nginx -t` in a confusing way,
+# so check both directions before validating.
+if ! grep -qs 'log_format soc' /etc/nginx/nginx.conf; then
+  log "Installing the Mini SOC nginx.conf (defines log_format soc)"
+  install -m 0644 "$APP_DIR/infrastructure/ec2-soc/nginx/nginx.conf" /etc/nginx/nginx.conf
+fi
+if grep -rqs 'log_format soc' /etc/nginx/sites-enabled/; then
+  echo "[install] ERROR: log_format soc is defined in sites-enabled; it belongs in /etc/nginx/nginx.conf" >&2
+  exit 1
+fi
+
 nginx -t
 systemctl enable --now nginx >/dev/null 2>&1 || true
 systemctl reload nginx

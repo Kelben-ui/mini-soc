@@ -8,12 +8,11 @@ match:
   category: web
   action: http_request
 
-contains:
-  - "; whoami"
-  - "; id"
-  - "| whoami"
-  - "| id"
-  - "&& whoami"
-  - "&& id"
+# A single shell metacharacter (optionally repeated, e.g. ``&&``) followed by a
+# common command.  ``[;&|]+`` covers ``;whoami``, ``| id``, ``&&cat ...`` and
+# ``||sh`` alike; the previous literal-only list missed ``&&cat`` and any form
+# attack-sim/commands send without a space.
+regex:
+  - "[;&|]+\\s*(whoami|id|cat|uname|ls|nc|curl|wget|bash|sh|python|ping|sleep)\\b"
 
 mitre: T1059

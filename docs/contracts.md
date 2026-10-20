@@ -138,6 +138,13 @@ Additional requirements:
 -   `dst_ip` must be the collector instance private IP address for
     local services such as the web application and SSH.
 -   Timestamps must be normalized to UTC.
+  Sources that emit a naive timestamp with no offset (nginx's error log
+  writes `2026/10/20 09:58:42` in the **host's local time**) must be
+  interpreted as local and converted, never relabelled as UTC — see the
+  note in [`collector/README.md`](../collector/README.md#timestamps).
+  A naive timestamp that is falsely claimed to be UTC lands in the future on
+  any non-UTC host, and the detection engine (which anchors its window on the
+  newest event) then skips every genuinely-current event.
 -   The `uri`, `query`, and `body` values of web requests must be
     URL-decoded before detection so that an encoded payload such as
     `id=1%27+OR+1%3D1` is matched as `id=1' OR 1=1`.

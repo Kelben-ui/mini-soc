@@ -141,10 +141,10 @@ def main():
                 outcome="failure",
                 details={
                     "method": "POST",
-                    "uri": "/login",
+                    "uri": "/dvwa/login.php",
                     "user_agent": "Mozilla/5.0",
                 },
-                raw="POST /login HTTP/1.1 401",
+                raw="POST /dvwa/login.php HTTP/1.1 401",
                 timestamp=now - timedelta(seconds=i),
             )
 

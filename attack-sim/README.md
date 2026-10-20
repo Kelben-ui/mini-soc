@@ -37,9 +37,11 @@ instead of a CIDR range.
    # edit target.conf: ALLOWED_TARGET="<your EC2 public IP>"
    ```
 
-   `target.conf` should be in `.gitignore` — it changes whenever the
-   instance restarts without an Elastic IP, and shouldn't be committed
-   with a stale or shared IP.
+   The same file holds the DVWA credentials the web scripts log in with
+   (`DVWA_USER` / `DVWA_PASS`, default `admin` / `password`). `target.conf`
+   should be in `.gitignore` — it changes whenever the instance restarts
+   without an Elastic IP, and shouldn't be committed with a stale or shared
+   IP.
 
 2. Make scripts executable:
 
@@ -94,6 +96,30 @@ types or `all`.
 ./sqli-xss.sh <EC2_PUBLIC_IP> all
 ```
 
+Attack types: `sqli`, `xss`, `cmdi`, `traversal`, `bruteforce`.
+
+**Authenticated by default.** DVWA will not run a vulnerable module's code
+until the request carries a logged-in session — an unauthenticated request
+just bounces off `login.php`, so the payload never reaches the sink and never
+appears in the access log. The script therefore:
+
+1. `GET /dvwa/login.php` to prime a cookie jar and read the CSRF
+   `user_token`;
+2. `POST /dvwa/login.php` with `DVWA_USER`/`DVWA_PASS` from `target.conf`;
+3. verifies the session actually reached `/dvwa/index.php` (DVWA answers 302
+   for both good and bad passwords, so the status code alone proves nothing)
+   and aborts loudly if login failed;
+4. sends every payload with the session cookie.
+
+`bruteforce` deliberately skips the authenticated session and re-fetches a
+fresh `user_token` for each wrong-password attempt, since failed logins are
+exactly what `WEB-BF-001` counts.
+
+**Prerequisite:** DVWA must be initialised (`/dvwa/setup.php` → *Create /
+Reset Database*, which creates `admin` / `password` by default). Security
+level is set to **low** via the `security` cookie that DVWA hands out on the
+first request, so no manual `/dvwa/security.php` step is needed.
+
 ### `scanner-ua.sh`
 Sends requests with the User-Agents used by sqlmap / Nikto / Nmap / Gobuster.
 This is what trips `scanner_user_agent` (WEB-SCAN-001) — the rule matches the
@@ -102,13 +128,6 @@ This is what trips `scanner_user_agent` (WEB-SCAN-001) — the rule matches the
 ```bash
 ./scanner-ua.sh <EC2_PUBLIC_IP>
 ```
-
-Attack types: `sqli`, `xss`, `cmdi`, `traversal`, `bruteforce`.
-
-**Prerequisite:** DVWA security level must be set to **low**
-(`/dvwa/security.php`). If DVWA enforces session cookies or CSRF tokens,
-the script needs updating to capture and replay them — check this once
-DVWA is live and update this README with the working approach.
 
 ### `recon-chain.sh`
 Runs all four stages in sequence from one source: port scan → SQLi → XSS
@@ -121,6 +140,9 @@ across 2+ categories within 30 minutes) and for the final live demo.
 
 Since web target and SSH target are now the same host, no separate
 IP juggling is needed — the single EC2 public IP is used throughout.
+
+Its SQLi/XSS stage calls `sqli-xss.sh`, so it inherits the DVWA login /
+CSRF handling described above and needs no extra setup.
 
 ### `outbound-conn.sh` (run **on the instance**)
 Opens a TCP connection to a destination port outside the allow-list
@@ -158,14 +180,16 @@ rather than a payload, so it is covered by the replay suite
 
 ## Known gaps / to confirm
 
-- [ ] Exact DVWA vulnerability page paths (can vary by DVWA version)
-- [ ] Whether DVWA session cookies / CSRF tokens need to be handled in
-      `sqli-xss.sh`
+- [x] Exact DVWA vulnerability page paths — confirmed against DVWA 1.x:
+      `/dvwa/login.php`, `/dvwa/vulnerabilities/{sqli,xss_r,exec,fi,brute}/`.
+      The login form needs a CSRF `user_token`; the low-security vuln pages
+      need only the session cookie. Both are handled by `sqli-xss.sh`.
+- [x] Whether DVWA session cookies / CSRF tokens need to be handled in
+      `sqli-xss.sh` — yes; the script now logs in (fetching `user_token`) and
+      replays the session on every payload. See the `sqli-xss.sh` section.
 - [ ] Confirm sshd config on the instance has no rate-limiting or
       fail2ban that would throttle the brute-force test (separate from
       `live_ids_ips.py`'s own intentional blocking)
-- [ ] Confirm each script's traffic produces the expected log lines for
-      the collector's parsers
 - [ ] Confirm timing (`-T4` on Nmap, sleep gaps in recon-chain) against
       the real internet path to AWS — adjust if latency is higher than
       a local lab would have been
@@ -174,6 +198,13 @@ rather than a payload, so it is covered by the replay suite
       `docs/testing/second-source-ip.md`
 - [ ] Confirm whether `target.conf` should instead read an Elastic IP,
       to avoid updating it every time the instance restarts
+
+> **Confirmed end-to-end (local WSL lab):** every `sqli-xss.sh` attack type was
+> run against the local stack; the collector parsed the `soc` access log and the
+> detection engine raised `WEB-SQLI-001`, `WEB-XSS-001`, `WEB-LFI-001`,
+> `WEB-CMD-001`, `WEB-SCAN-001` and `WEB-BF-001`. This also closes the former
+> "confirm each script's traffic produces the expected log lines" item for the
+> web scripts. See `docs/testing/local-wsl-run.md`.
 
 ## Logging format
 
