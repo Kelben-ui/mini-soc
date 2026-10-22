@@ -91,7 +91,7 @@ export default function Overview() {
   }
 
   if (!stats) {
-    return <p className="text-sm text-slate-400">Loading SOC overview...</p>;
+    return <p className="text-sm text-slate-400">Loading SentinelX overview...</p>;
   }
 
   // Prefer the server's "active" counts (open alerts only); fall back to all
@@ -104,7 +104,7 @@ export default function Overview() {
 
   return (
     <div className="space-y-6 text-slate-100">
-      <h1 className="text-2xl font-bold">SOC Overview</h1>
+      <h1 className="text-2xl font-bold">SentinelX Overview</h1>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile label="Total events" value={stats.total_events} accent="text-sky-300" />

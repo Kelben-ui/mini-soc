@@ -27,7 +27,7 @@ export default function Login() {
         className="w-full max-w-sm space-y-4 rounded-lg border border-slate-800 bg-slate-900 p-6"
       >
         <div>
-          <h1 className="text-xl font-bold">Mini SOC Platform</h1>
+          <h1 className="text-xl font-bold">SentinelX Platform</h1>
           <p className="mt-1 text-sm text-slate-400">Analyst sign-in</p>
         </div>
 

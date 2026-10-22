@@ -36,7 +36,7 @@ export default function NavBar() {
   return (
     <>
       <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
-        <span className="font-semibold">Mini SOC Platform</span>
+        <span className="font-semibold">SentinelX Platform</span>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -55,7 +55,7 @@ export default function NavBar() {
         }
       >
         <div className="mb-4 hidden md:block">
-          <div className="text-lg font-bold">Mini SOC</div>
+          <div className="text-lg font-bold">SentinelX</div>
           <div className="text-xs text-slate-400">Platform</div>
         </div>
 
