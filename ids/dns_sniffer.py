@@ -18,6 +18,7 @@ import struct
 
 ETH_P_IP = 0x0800
 ETH_P_8021Q = 0x8100
+ETH_P_ALL = 0x0003
 IPPROTO_UDP = 17
 
 
@@ -193,9 +194,19 @@ _IFF_UP = 0x1
 
 
 def _open_capture_socket(interface: str) -> socket.socket:
-    """Open a CAP_NET_RAW AF_PACKET socket bound to ``interface``."""
+    """Open a CAP_NET_RAW AF_PACKET socket bound to ``interface``.
+
+    The socket is opened with ``ETH_P_ALL`` on purpose.  Linux delivers
+    *outgoing* frames only to packet sockets registered for ``ETH_P_ALL``
+    (``dev_queue_xmit_nit()`` walks the ``ptype_all`` list); a socket opened
+    with a specific protocol such as ``ETH_P_IP`` is only fed on the receive
+    path.  A protocol-specific socket would therefore only ever see the DNS
+    *responses* coming back from the resolver - and never the queries this
+    daemon exists to detect.  :func:`parse_packet` filters out the frames
+    that are of no interest (ARP, IPv6, non-UDP, other ports).
+    """
     handle = socket.socket(
-        socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_IP)
+        socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL)
     )
 
     try:

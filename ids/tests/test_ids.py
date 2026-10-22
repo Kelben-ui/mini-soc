@@ -9,6 +9,8 @@ import copy
 import json
 import os
 import struct
+import threading
+import types
 
 import pytest
 
@@ -505,6 +507,70 @@ def test_sniff_honours_an_explicit_interface():
         monkeypatch.undo()
 
     assert bound == [("eth0", 0)]
+
+
+def test_capture_socket_uses_eth_p_all():
+    """The capture socket must be opened with ETH_P_ALL.
+
+    Linux hands outgoing frames only to packet sockets registered for
+    ETH_P_ALL (``dev_queue_xmit_nit()`` walks the ``ptype_all`` list).  A
+    protocol-specific socket (ETH_P_IP) is fed on the receive path only, so it
+    would see the DNS *responses* coming back from the resolver and never the
+    queries - and DNS-ANOMALY-001 could never fire.
+    """
+    import ids.dns_sniffer as sniffer
+
+    created = []
+    monkeypatch = pytest.MonkeyPatch()
+
+    class FakeSocket:
+        def bind(self, address):
+            pass
+
+        def close(self):
+            pass
+
+    def fake_socket(*args, **kwargs):
+        created.append(args)
+        return FakeSocket()
+
+    monkeypatch.setattr(sniffer.socket, "socket", fake_socket)
+    monkeypatch.setattr(sniffer.socket, "htons", lambda value: value)
+
+    try:
+        sniffer._open_capture_socket("eth0")
+    finally:
+        monkeypatch.undo()
+
+    assert created[0][2] == sniffer.ETH_P_ALL
+    assert created[0][2] != 0x0800  # ETH_P_IP would only see the responses
+
+
+def test_dns_sniffer_retries_after_a_socket_error():
+    """A socket error must not silently end DNS detection."""
+    import ids.live_ids_ips as daemon
+
+    calls = []
+    stop = threading.Event()
+
+    def fake_sniff(handle, interface, should_stop):
+        calls.append(interface)
+        if len(calls) == 1:
+            raise OSError("boom")
+        stop.set()
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(daemon, "sniff_dns", fake_sniff)
+    monkeypatch.setattr(daemon, "RETRY_SEC", 0)
+
+    try:
+        daemon.run_dns_sniffer(
+            None, types.SimpleNamespace(dns_interface=None), stop
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert len(calls) == 2, "the sniffer must retry after a socket error"
 
 
 

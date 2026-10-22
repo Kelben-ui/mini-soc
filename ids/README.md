@@ -22,6 +22,14 @@ of `systemd-journal` (or `adm`); the packaged unit grants both. The DNS sniffer
 needs `CAP_NET_RAW`, which the unit grants via `AmbientCapabilities` — the
 service does **not** run as root.
 
+The capture socket is opened with `AF_PACKET`/`ETH_P_ALL`, not with a
+protocol-specific `ETH_P_IP`: Linux delivers outgoing frames only to packet
+sockets registered for `ETH_P_ALL`, so an `ETH_P_IP` socket would see the DNS
+*responses* coming back from the resolver and never the queries the daemon
+exists to detect. `parse_packet()` filters the frames that do not matter
+(ARP, IPv6, non-UDP, other ports). If the sniffer hits a socket error it logs
+it and retries every few seconds instead of silently losing DNS detection.
+
 ## Signatures
 
 Every signature is configurable in `ids.yaml` (`signatures:`); the defaults:
@@ -82,10 +90,10 @@ the collector, which normalizes it into the common event model.
 
 ## Configuration
 
-`/etc/mini-soc/ids.yaml` (installed from this directory by
-`deploy/install.sh`, mode `0640 root:mini-soc`). Everything is configurable —
-thresholds, windows, cooldown, allow-lists, prefixes, output path, hostname and
-the signature catalog. See [`ids.yaml`](ids.yaml) for the commented full set.
+`ids/ids.yaml` in the repo (`IDS_CONFIG` overrides the path). Everything is
+configurable — thresholds, windows, cooldown, allow-lists, prefixes, output
+path, hostname and the signature catalog. See [`ids.yaml`](ids.yaml) for the
+commented full set.
 
 ```yaml
 thresholds:
@@ -120,7 +128,7 @@ dns:
 signatures: { ... }
 ```
 
-A few `IDS_*` / `SOC_HOSTNAME` variables in `/etc/mini-soc/.env` override
+A few `IDS_*` / `SOC_HOSTNAME` variables in the repo `.env` override
 individual values (systemd `EnvironmentFile`) without editing the YAML; the YAML
 is the primary source.
 
@@ -141,5 +149,5 @@ pytest -v ids
 | `live_ids_ips.py` | Daemon: journal parsing, detection engine, memory pruning |
 | `config.py` | `ids.yaml` loader (defaults + env overrides) |
 | `dns_sniffer.py` | `AF_PACKET` UDP/53 query parser + sniffer |
-| `ids.yaml` | Configuration template installed to `/etc/mini-soc/ids.yaml` |
+| `ids.yaml` | Live configuration (also the template; `IDS_CONFIG` overrides the path) |
 | `tests/test_ids.py` | Unit tests |

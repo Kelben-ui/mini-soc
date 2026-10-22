@@ -58,6 +58,9 @@ _SYN = re.compile(r"\bSYN\b")
 
 KINDS_WITH_PORTS = {"scan", "outbound", "syn_flood"}
 
+# Seconds to wait before retrying the DNS sniffer after a socket error.
+RETRY_SEC = 5
+
 
 def _local_ip() -> str:
     import socket
@@ -400,12 +403,12 @@ class IdsEngine:
                 with open(self.config.output_path, "a") as handle:
                     handle.write(json.dumps(event) + "\n")
             except OSError as error:
-                print(f"[ERROR] Could not write alert: {error}")
+                print(f"[ERROR] Could not write alert: {error}", flush=True)
                 continue
 
             sig = event["alert"]["signature"]
             src = event.get("src_ip") or event["dns"]["qname"]
-            print(f"[ALERT] {sig} from {src} (count={event['metadata']['count']})")
+            print(f"[ALERT] {sig} from {src} (count={event['metadata']['count']})", flush=True)
 
     def _prune(self, now: float):
         if now - self._last_prune < self.config.prune_interval_sec:
@@ -460,18 +463,35 @@ def monitor_journal(engine: IdsEngine, config: IdsConfig):
 
 
 def run_dns_sniffer(engine: IdsEngine, config: IdsConfig, stop_event):
+    """Sniff DNS queries until ``stop_event`` is set.
+
+    A socket error must not silently kill DNS detection: the thread logs the
+    error and retries every ``RETRY_SEC`` seconds, so a transient failure (or
+    an interface that only appears later) does not leave the SOC blind.
+    """
+
     def handle(packet):
         engine.process_dns(packet["qname"], packet["src_ip"])
 
-    try:
-        sniff_dns(handle, config.dns_interface, stop_event.is_set)
-    except PermissionError:
-        print(
-            "[ERROR] Cannot sniff DNS: CAP_NET_RAW is required. "
-            "Set dns.enabled: false in ids.yaml to run without it."
-        )
-    except OSError as error:
-        print(f"[ERROR] DNS sniffer stopped: {error}")
+    while not stop_event.is_set():
+        try:
+            sniff_dns(handle, config.dns_interface, stop_event.is_set)
+        except PermissionError:
+            print(
+                "[ERROR] Cannot sniff DNS: CAP_NET_RAW is required. "
+                "Set dns.enabled: false in ids.yaml to run without it.",
+                flush=True,
+            )
+            return
+        except OSError as error:
+            print(
+                f"[ERROR] DNS sniffer stopped: {error} - retrying in {RETRY_SEC}s",
+                flush=True,
+            )
+            if stop_event.wait(RETRY_SEC):
+                return
+        else:
+            return
 
 
 def has_journal_access() -> bool:
@@ -495,33 +515,34 @@ def main():
     if not has_journal_access():
         print(
             "[ERROR] Cannot read the systemd journal. Run as root or add the "
-            "service account to the systemd-journal group."
+            "service account to the systemd-journal group.",
+            flush=True,
         )
         return 1
 
     engine = IdsEngine(config)
 
-    print("[*] Mini SOC IDS (detection only) started")
-    print(f"[*] Host: {config.hostname}")
-    print(f"[*] Writing alerts to {config.output_path}")
-    print(f"[*] Allow-list: {sorted(config.allowlist) or 'empty'}")
+    print("[*] Mini SOC IDS (detection only) started", flush=True)
+    print(f"[*] Host: {config.hostname}", flush=True)
+    print(f"[*] Writing alerts to {config.output_path}", flush=True)
+    print(f"[*] Allow-list: {sorted(config.allowlist) or 'empty'}", flush=True)
 
     stop_event = threading.Event()
 
     if config.dns_enabled:
-        print("[*] DNS sniffer enabled (CAP_NET_RAW)")
+        print("[*] DNS sniffer enabled (CAP_NET_RAW)", flush=True)
         threading.Thread(
             target=run_dns_sniffer,
             args=(engine, config, stop_event),
             daemon=True,
         ).start()
     else:
-        print("[*] DNS sniffer disabled")
+        print("[*] DNS sniffer disabled", flush=True)
 
     try:
         monitor_journal(engine, config)
     except KeyboardInterrupt:
-        print("\n[INFO] IDS stopped.")
+        print("\n[INFO] IDS stopped.", flush=True)
     finally:
         stop_event.set()
 

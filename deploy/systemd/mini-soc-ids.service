@@ -18,6 +18,9 @@ AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW
 WorkingDirectory=@APP_DIR@
 EnvironmentFile=@ENV_FILE@
+# Unbuffered stdout/stderr: the daemon's banner and its sniffer errors have
+# to reach the journal immediately, not when the 8 KiB buffer fills up.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=@VENV_DIR@/bin/python -m ids.live_ids_ips
 Restart=always
 RestartSec=2
