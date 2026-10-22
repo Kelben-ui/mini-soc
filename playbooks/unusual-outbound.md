@@ -1,41 +1,60 @@
-# Unusual outbound connection (`NET-OUTBOUND-001`)
+# Unusual Outbound Connection Playbook — `NET-OUTBOUND-001`
 
-**Severity** MEDIUM · **Category** network · **MITRE** T1041 · **Source** custom IDS (`9000005`, from nftables `SOC_OUT:`)
+**Category:** Network  
+**Initial Severity:** MEDIUM  
+**MITRE ATT&CK:** T1041 — Exfiltration Over C2 Channel  
+**Source:** Custom IDS signature `9000005`, from nftables `SOC_OUT:` log lines
 
-> The host opened an outbound connection to a port outside the allow-list
-> (53/80/443/123). Could be a mis-configured service — or command-and-control.
+## 1. Triage — Analyst
 
-## Trigger
+1. Open the alert and identify the source host, destination IP, destination port and timestamp.
+2. Confirm the trigger: the host opened a connection to a destination port outside the allow-list (`53`, `80`, `443`, `123`). Inspect the linked events.
+3. Identify the process that opened the connection (`ss -tnp`, `lsof -i`) and the user it runs as.
+4. Review related events from the same source over the previous 30 minutes, including `DNS-ANOMALY-001`, `SSH-SUCCESS-001` and web alerts; outbound traffic is a classic post-compromise signal.
+5. Check the destination against known-good services and against any ticket for an approved change.
 
-The custom IDS sees the host open a connection to a non-allow-listed destination
-port (from the nftables `SOC_OUT:` journal line). Logic lives in
-`rules/unusual_outbound.yaml`.
+## 2. Evidence Collection — Analyst
 
-## Triage
+1. Preserve the original events, timestamps and alert ID.
+2. Export the linked `SOC_OUT:` events.
+3. Record the destination IP, destination port, owning process, user and connection duration.
+4. Record the volume and pattern of the traffic, including whether it is periodic or sustained.
+5. Link all evidence to the alert or incident.
 
-1. Identify the destination IP/port and the **process** that opened it
-   (`ss -tnp`, `lsof -i`).
-2. Decide whether it is legitimate egress the allow-list should cover, a
-   mis-configured service, or C2/exfiltration.
-3. Correlate with `DNS-ANOMALY-001`, `SSH-SUCCESS-001`, or a recent web
-   exploitation — outbound traffic is a classic post-compromise signal.
+## 3. Investigation — Analyst
 
-## Evidence
+1. Determine whether the connection is legitimate egress, a mis-configured service or command-and-control or exfiltration.
+2. Identify the process owner, its expected behaviour and whether that destination is part of it.
+3. Check the destination's reputation and whether it belongs to a known provider or to anonymous infrastructure.
+4. Document findings and separate confirmed facts from assumptions.
+5. Escalate unexplained outbound connections to the SOC Lead, especially where a prior compromise exists.
 
-- Export the `SOC_OUT:` events; record `dst_ip`, `dst_port`, and the owning
-  process.
+## 4. Containment — Lead / Admin
 
-## Containment
+1. Review the analyst's findings and approve containment.
+2. For a known-good service, update the egress allow-list instead of blocking; do not break legitimate egress.
+3. For a suspicious or unexplained destination, record `block IP` for the destination and confirm it after approval.
+4. For suspected command-and-control, record `isolate host` and involve the lead.
+5. Record every containment action, its reason, owner and timestamp.
 
-- Known-good service → update the egress allow-list (do **not** block).
-- Suspicious/unexplained → **Block IP** the destination and record
-  **`isolate host`** pending investigation.
+## 5. Remediation and Recovery — Admin / Host Owner
 
-## Recovery / Closure
+1. Stop the offending process or service and reconfigure it to use an approved destination and port.
+2. Add the approved destination to the egress allow-list so the alert does not recur for legitimate traffic.
+3. Confirm no further connections to the blocked destination after containment.
+4. Review the host for the compromise that could have opened the connection, including new accounts, keys and scheduled tasks.
+5. Rebuild the host from the clean baseline when malware is confirmed.
+6. Confirm that normal service, logging and detection are functioning after recovery.
 
-- Confirm no further connections to the destination after the block.
-- Document the root cause; close **RESOLVED** (or **FALSE POSITIVE** for
-  legitimate traffic).
+## 6. Closure — Admin
+
+1. Record the final findings, the destination, owning process, impact and remediation actions.
+2. For legitimate traffic, document the allow-list change and close the alert as resolved.
+3. For an approved service that should have been allow-listed, close the alert as a false positive with the authorization recorded.
+4. For command-and-control or exfiltration, verify containment, process removal and host recovery before requesting closure.
+5. Close the incident only when all closure criteria are met.
+
+**Important:** This rule fires on the destination port alone; identify the owning process before treating the connection as command-and-control.
 
 ## Related
 

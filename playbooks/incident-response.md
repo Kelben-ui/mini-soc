@@ -1,6 +1,6 @@
-# Mini SOC — Incident Response Playbook
+# SentinelX — Incident Response Playbook
 
-> **Version:** 1.1 · **Deployment:** single Amazon EC2 instance (public
+> **Version:** 1.2 · **Deployment:** single Amazon EC2 instance (public
 > host `mini-soc`, Ubuntu 24.04, hostname `soc-01`) · **Owner:** M6
 >
 > This is the **umbrella playbook**: the platform model, the universal steps that
@@ -16,7 +16,7 @@
 
 ## 1. Platform model (read once)
 
-The Mini SOC runs as **one EC2 instance**. There is no separate firewall host:
+The SentinelX runs as **one EC2 instance**. There is no separate firewall host:
 the instance's own `nftables` ruleset *is* the firewall, and it both protects the
 host and produces the network telemetry the SOC consumes.
 
@@ -33,10 +33,10 @@ attackers / analyst
         soc-agent (tails logs) → collector (normalizes) → PostgreSQL events
                                    │
                                    ▼
-               detection engine (evaluate rules → alerts → chains)
+                detection engine (evaluate rules → alerts → chains)
                                    │
                                    ▼
-                    dashboard (triage, incidents, actions)
+                     dashboard (triage, incidents, actions)
 ```
 
 **Objects and how they relate**
@@ -58,7 +58,7 @@ NEW ──► INVESTIGATING ──► CONTAINED ──► RESOLVED
 **Incident lifecycle** (enforced by `backend/app/routers/incidents.py`):
 
 ```
-open ──► investigating ──► contained ──► resolved ──► closed   (closing needs an analyst/lead role)
+open ──► investigating ──► contained ──► resolved ──► closed   (only the admin can close)
 ```
 
 ## 2. Universal steps (every alert)
@@ -79,6 +79,11 @@ open ──► investigating ──► contained ──► resolved ──► cl
    `reset credentials`) are recorded on the timeline and carried out
    out-of-band.
 5. **Close out** with a root cause and lessons learned (Section 12).
+
+> **Roles.** An analyst opens alerts, reads events and adds investigation notes.
+> Evidence export, alert status changes, incident creation, response actions and
+> incident status changes require a **lead or admin** role. **Only the admin
+> closes an incident.**
 
 > **Rules of engagement.** No action is automatic. `block IP` only takes effect
 > after a human records it and then **confirms** it in the dashboard. The
@@ -126,7 +131,7 @@ for the full context.
 | WEB-CMD-001 | Command injection | HIGH | web request contains `; id`, `\| whoami`, … | [`web-command-injection.md`](web-command-injection.md) | §7 |
 | WEB-LFI-001 | Directory traversal / LFI | HIGH | web request contains `../`, `/etc/passwd`, `php://` | [`web-traversal-lfi.md`](web-traversal-lfi.md) | §7 |
 | WEB-SCAN-001 | Scanner user agent | MEDIUM | UA contains sqlmap/nikto/nmap/gobuster | [`web-scanner-user-agent.md`](web-scanner-user-agent.md) | §6 |
-| WEB-BF-001 | Web login brute force | HIGH | ≥20 POST `/login` from one `src_ip` / 120 s | [`web-login-bruteforce.md`](web-login-bruteforce.md) | §8 |
+| WEB-BF-001 | Web login brute force | HIGH | ≥20 `POST /dvwa/login.php` or `/dvwa/vulnerabilities/brute` from one `src_ip` / 120 s | [`web-login-bruteforce.md`](web-login-bruteforce.md) | §8 |
 | WEB-FLOOD-001 | HTTP flood | MEDIUM | ≥301 requests with status 301 / 60 s from one `src_ip` | [`http-flood.md`](http-flood.md) | §9 |
 | SSH-BF-001 | SSH brute force | HIGH | ≥10 failed `ssh_login` / 300 s (per src→dst) | [`ssh-brute-force.md`](ssh-brute-force.md) | §5 |
 | SSH-SUCCESS-001 | Login success after brute force | CRITICAL | successful `ssh_login` (correlated to a BF alert) | [`ssh-success-after-bruteforce.md`](ssh-success-after-bruteforce.md) | §5 |
@@ -137,241 +142,360 @@ for the full context.
 
 ## 5. Scenario — SSH brute force / successful login
 
-**Rules:** `SSH-BF-001` (HIGH), `SSH-SUCCESS-001` (CRITICAL).
-The IDS also raises its own SSH signature (`9000002`), which arrives as
-`IDS-SIG-001` (§10) — the two are the same activity seen from two sources.
+**Rules:** `SSH-BF-001` (HIGH) · `SSH-SUCCESS-001` (CRITICAL)  
+**Source:** `auth.log`, with IDS signature `9000002` as a second view of the same activity
 
-**Trigger.** ≥10 failed `ssh_login` events from one `src_ip` to the same
-`dst_ip` within 300 s (auth.log). `SSH-SUCCESS-001` fires on a *successful*
-login that the detection engine correlates to an open brute-force alert.
+### Triage — Analyst
 
-**Triage**
+1. Confirm the failed-login burst: at least 10 failed `ssh_login` events from one source to one host within 300 s, and identify the targeted username(s). One account means a targeted attack; several means password spraying.
+2. Check for a successful login from the same source. If `SSH-SUCCESS-001` fired, treat the account as compromised and escalate now.
+3. For `SSH-SUCCESS-001`, confirm the open `SSH-BF-001` alert on the same source within the previous 30 minutes and identify what the account can reach.
+4. Check the source against the allow-list (`rules/allowlist.yaml`).
+5. Review related events over the previous 30 minutes, including `NET-PORTSCAN-001`; reconnaissance followed by brute force is the classic chain.
 
-1. Confirm the failed-login burst and the targeted username(s). One account =
-   targeted; several = password spraying.
-2. **Check for a success on the same source.** If `SSH-SUCCESS-001` fired, treat
-   this as a **suspected compromise**, not an attempt — escalate now.
-3. Correlate: a prior `NET-PORTSCAN-001` from the same IP in the last 30 min is
-   the classic recon → brute-force chain.
+### Evidence Collection — Analyst
 
-**Evidence**
-- Export the linked `auth.log` events (failed attempts plus any success).
-- Record: `src_ip`, target host (`soc-01`), targeted username(s), attempt count,
-  window, whether a success occurred.
-- If a success occurred, export the `SSH-SUCCESS-001` alert too and keep both
-  under the same incident.
+1. Preserve the original events, timestamps and alert IDs.
+2. Export the `auth.log` events for the failed burst and, where one occurred, the accepted login.
+3. Record the source IP, target host, targeted username(s), attempt count, time window and whether a success occurred.
+4. Record the matching IDS signature event (`9000002`) where present; it is the same activity, not a second attack.
+5. Keep the brute-force and success alerts under one incident.
 
-**Containment**
-- Attempts only (no success): **Block IP** for the source (3600 s) once the
-  threshold is confirmed and traffic is ongoing.
-- Success occurred: **Block IP** for the source, then record **`disable
-  account`** for the compromised username and reset its credentials +
-  `authorized_keys` out-of-band. `SSH-SUCCESS-001` must go through full
-  incident closure.
+### Investigation — Analyst
 
-**Recovery**
-- Confirm normal SSH from approved sources still works after the block.
-- Confirm no new `authorized_keys`, users, or cron entries on the host.
-- Longer term: disable password auth (`PasswordAuthentication no`) — see
-  `infrastructure/ec2-soc/sshd_config`.
+1. Determine whether the traffic was an authorized test, an unauthorized attempt or a successful compromise.
+2. Identify whether the attack targeted one account or many, and whether any account was guessed.
+3. For a successful login, identify the attacker's actions: commands run, files read or changed, keys added, users created and outbound connections opened.
+4. Check the host's exposure: whether password authentication is enabled and whether the targeted accounts are privileged.
+5. Escalate any successful login to the SOC Lead immediately.
 
-**Closure**
-- Benign (e.g. an approved test IP) → **FALSE POSITIVE** with reason.
-- Real attempt, no success → alert **RESOLVED**, incident `resolved` → `closed`.
-- Success → incident closure with root cause, credential reset, lessons learned.
+### Containment — Lead / Admin
+
+1. For an ongoing attack with attempts only, record `block IP` for the source with a 3600 s timeout and confirm it after approval.
+2. For a successful login, record `block IP`, record `disable account` for the compromised user and reset its credentials and `authorized_keys` out-of-band, and record `isolate host` for the host.
+3. Treat the host as compromised until proven otherwise; do not restore the account before the host is cleaned.
+4. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Host Owner
+
+1. Reset the targeted account's password out-of-band and remove unauthorized `authorized_keys` entries.
+2. For a compromise, rotate every credential the account could reach and rebuild the host from the clean baseline.
+3. Switch to key-only SSH (`PasswordAuthentication no`) and tighten `MaxStartups`.
+4. Confirm no new users, keys or cron entries remain and that approved SSH still works.
+5. Confirm that normal service, logging and detection are functioning.
+
+### Closure — Admin
+
+1. Record the final findings, attempt volume, targeted accounts, impact and remediation actions.
+2. For an authorized test from an approved source, record the authorization and use the supported benign/false-positive disposition.
+3. For an unsuccessful attempt, document the evidence and the hardening applied, then close the alert as resolved.
+4. For a successful login, verify containment, credential rotation and host recovery before requesting closure.
+5. Close the incident only when all closure criteria are met.
 
 *Reproduce this scenario with `attack-sim/ssh-brute-force.sh` (see
 `attack-sim/README.md`).*
 
 ## 6. Scenario — Network reconnaissance
 
-**Rules:** `NET-PORTSCAN-001` (MEDIUM), `WEB-SCAN-001` (MEDIUM).
+**Rules:** `NET-PORTSCAN-001` (MEDIUM) · `WEB-SCAN-001` (MEDIUM)  
+**Source:** nftables `SOC_DROP:`/`SOC_ACCEPT:` lines and IDS signature `9000001`; Nginx access logs for the scanner user-agent
 
-**Trigger**
-- `NET-PORTSCAN-001`: a burst of connection attempts across many distinct
-  destination ports from one source (nftables `SOC_DROP:`/`SOC_ACCEPT:` lines
-  and/or the IDS `scan` signature `9000001`).
-- `WEB-SCAN-001`: an HTTP request whose `User-Agent` matches a known scanner
-  (sqlmap, nikto, nmap, gobuster).
+### Triage — Analyst
 
-**Triage**
-1. Confirm the distinct-port count / the scanner UA string.
-2. Correlate over the last 30 minutes: reconnaissance with **no** follow-on is
-   often an authorised scan; recon **followed by** `WEB-SQLI-001`, `WEB-CMD-001`
-   or `SSH-BF-001` from the same IP is stage 1 of an attack chain — promote the
-   chain to an incident.
-3. Check the source against the allow-list (analyst IP, approved scanner).
+1. For the port scan, confirm at least 20 distinct destination ports from one source within 60 s and note which ports responded as open.
+2. For the scanner user-agent, confirm the `User-Agent` matched `sqlmap`, `nikto`, `nmap` or `gobuster` and note the requested paths.
+3. Check the source against the allow-list (`rules/allowlist.yaml`).
+4. Review related events from the same source over the previous 30 minutes. Reconnaissance with no follow-on is usually authorized scanning; reconnaissance followed by `WEB-SQLI-001`, `WEB-CMD-001`, `WEB-LFI-001`, `WEB-BF-001` or `SSH-BF-001` is stage 1 of an attack chain.
+5. Note the services and endpoints the reconnaissance identified; they are the attacker's next targets.
 
-**Evidence**
-- Export the scanned-port events / the scanner request lines.
-- Record: `src_ip`, target, first/last seen, distinct port count or UA string.
+### Evidence Collection — Analyst
 
-**Containment**
-- Standalone, low confidence → **monitor**, no block.
-- Correlated with exploitation attempts → **Block IP** for the chain's source
-  (1800 s is usually enough for pure recon; 3600 s if exploitation followed).
+1. Preserve the original events, timestamps and alert IDs.
+2. Export the scanned-port events and the scanner request lines.
+3. Record the source IP, target, first and last seen times, distinct port count or `User-Agent` string, and the paths probed.
+4. Record whether the source appears on the allow-list and who authorized the scan.
+5. Keep both alerts under one incident when they describe the same activity.
 
-**Recovery / Closure**
-- Benign → **FALSE POSITIVE** with reason.
-- If part of a chain → close the **alert** as part of the parent incident, not
-  standalone.
-- Otherwise document the ports/UA and the duration, then **RESOLVED**.
+### Investigation — Analyst
+
+1. Determine whether the traffic was authorized scanning, unsanctioned reconnaissance or stage 1 of an attack chain.
+2. Identify the services and endpoints exposed and check them for follow-on exploitation.
+3. Check whether the source attempted authentication or retrieved data after scanning.
+4. Document findings and separate confirmed facts from assumptions.
+5. Escalate a correlated chain to the SOC Lead and promote it to a single incident.
+
+### Containment — Lead / Admin
+
+1. For standalone reconnaissance with no follow-on, continue monitoring; do not block an authorized scanner.
+2. For reconnaissance followed by exploitation attempts, record `block IP` for the chain source and confirm it after approval. Use 1800 s for pure reconnaissance and 3600 s when exploitation followed.
+3. Block the entire chain as one incident, not each alert separately.
+4. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Host Owner
+
+1. For reconnaissance alone, confirm that only intended services and endpoints are exposed and restrict anything found open by mistake.
+2. For a chain, apply the remediation from the exploitation playbook that matched the follow-on alerts.
+3. Add future approved scanners to the allow-list and retire expired authorizations.
+4. Confirm that normal service, logging and detection are functioning.
+
+### Closure — Admin
+
+1. Record the final findings, the ports probed or `User-Agent` seen, the endpoints enumerated and the authorization status.
+2. For authorized testing, record the authorization and use the supported benign/false-positive disposition.
+3. For reconnaissance that formed part of a chain, close these alerts inside the parent incident.
+4. For unsanctioned reconnaissance, document the exposure found and the tracking action taken, then close the alert as resolved.
+5. Close the incident only when all closure criteria are met.
 
 ## 7. Scenario — Web application attack (SQLi / XSS / command injection / LFI)
 
-**Rules:** `WEB-SQLI-001` (HIGH), `WEB-XSS-001` (MEDIUM), `WEB-CMD-001` (HIGH),
-`WEB-LFI-001` (HIGH). All match decoded URI/body content on DVWA/Nginx traffic.
+**Rules:** `WEB-SQLI-001` (HIGH) · `WEB-XSS-001` (MEDIUM) · `WEB-CMD-001` (HIGH) · `WEB-LFI-001` (HIGH)  
+**Source:** Nginx access and error logs, with application/database logs where available
 
-**Trigger**
-- `WEB-SQLI-001`: `' or `, `" or `, `union select`, `select `, ` from `,
-  `sleep(`, `--`, `/*`.
-- `WEB-CMD-001`: `; id`, `; whoami`, `| id`, `| whoami`, `&& id`, `&& whoami`.
-- `WEB-LFI-001`: `../`, `/etc/passwd`, `php://`.
-- `WEB-XSS-001`: `<script`, `javascript:`, `onerror=`, `onload=`.
+### Triage — Analyst
 
-**Triage**
-1. Identify which rule(s) fired and the exact token that matched.
-2. Read the decoded URI/body from the linked event and confirm it is a real
-   exploit attempt, not a false positive (a legitimate apostrophe in a form
-   field can trip the SQLi pattern).
-3. Check the HTTP status returned. A `200` on a DVWA endpoint that echoes
-   database output or a command result means the exploit likely **succeeded**.
-4. Correlate with `WEB-SCAN-001` / `NET-PORTSCAN-001` (the scan that found the
-   endpoint) and `WEB-BF-001` (credential discovery) in the last 30 minutes.
+1. Open the alert and identify the source IP, target host, endpoint, parameter, timestamp, HTTP method and status code.
+2. Identify the token that triggered the rule and inspect the linked event: SQLi tokens (`' or `, `union select`, `sleep(`), XSS tokens (`<script`, `javascript:`, `onerror=`), a shell separator followed by a command (`; id`, `| whoami`, `&& cat`) or traversal tokens (`../`, `/etc/passwd`, `php://`).
+3. Read the decoded URI or body and confirm the token is an attack payload, not a legitimate string such as documentation text or an apostrophe in a form field.
+4. Check the response for evidence of success: database output, a reflected or stored payload, command output such as `uid=0`, or file contents such as a `root:x:0:0:` line.
+5. Review related events from the same source over the previous 30 minutes, including `WEB-SCAN-001`, `NET-PORTSCAN-001` and `WEB-BF-001`.
 
-**Evidence**
-- Export the linked Nginx request events (with the decoded payload).
-- If exploitation looks successful, capture the DVWA response itself, not just
-  the log line, and attach it to the incident.
-- Record: `src_ip`, endpoint, payload, HTTP status, and whether data/execution
-  was observed.
+### Evidence Collection — Analyst
 
-**Containment**
-- Isolated scanner/UA hit only → monitor.
-- Confirmed exploitation attempt → **Block IP** for the source and promote to an
-  incident.
-- Command injection or LFI with evidence of success → **Block IP** immediately,
-  record **`isolate host`**, involve a lead, and treat `soc-01` as potentially
-  compromised (there is no container to stop — this is a host-level review).
+1. Preserve the original events, request details, timestamps and alert IDs.
+2. Export the linked Nginx access and error logs.
+3. Capture the response body where it shows database output, reflected content, command output or file contents, and attach it to the incident. Protect any personal or sensitive data it contains.
+4. Record the matched token, endpoint, parameter, source IP, status code and whether data or execution was observed.
+5. Link all evidence to the alert or incident.
 
-**Recovery**
-- Review the web root and configs for unexpected files or modifications.
-- Reset DVWA to a known-clean state before resuming testing.
-- If credentials were exposed, note them for rotation.
+### Investigation — Analyst
 
-**Closure**
-- Benign (own testing from an approved IP) → **FALSE POSITIVE** with reason.
-- Real attempt, no success → **RESOLVED** with root cause (e.g. "unpatched DVWA
-  `id` parameter") and lessons learned.
-- Success → full incident closure, signed off by a lead.
+1. Determine whether the request was a probe, a credible exploitation attempt or a confirmed compromise.
+2. Check the application and database for unauthorized data access, database changes or unexpected query behavior.
+3. For command injection and LFI, treat the host as at risk: search for side effects such as new files, users, cron entries, listening ports and reverse shells.
+4. Identify the affected application, database, host and potentially exposed data; command injection or LFI with success is a host-level event on `soc-01`.
+5. Escalate confirmed exploitation, and any suspected compromise, to the SOC Lead.
+
+### Containment — Lead / Admin
+
+1. For an isolated probe with no evidence of impact, continue monitoring.
+2. For a credible exploitation attempt, record `block IP` for the source and confirm it after approval.
+3. For confirmed compromise, or for command injection or LFI with evidence of success, record `block IP` and `isolate host`; there is no container to stop, so this is a host-level review of `soc-01`.
+4. Isolate a host only when justified by the evidence and the approved response procedure.
+5. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Application Owner
+
+1. Fix the vulnerable code: parameterized queries for SQLi, context-aware output encoding for XSS, no shell invocation for command injection, canonicalized allow-listed paths for LFI.
+2. Review the web root and configuration for unexpected files or modifications and remove any web shells.
+3. Remove stored payloads from affected pages, review database permissions and rotate any exposed credentials, sessions or tokens.
+4. Reset the vulnerable application (DVWA) to a known-clean state; rebuild the host from the clean baseline when execution is confirmed.
+5. Test the fix in an authorized environment and confirm the vulnerability is no longer reproducible.
+6. Confirm that normal service, logging and detection are functioning.
+
+### Closure — Admin
+
+1. Record the final findings, impact, root cause and remediation actions.
+2. For authorized testing, record the authorization and use the supported benign/false-positive disposition.
+3. For an unsuccessful attempt, document the evidence and the remediation that closes the vulnerability, then close the alert as resolved.
+4. For confirmed compromise, verify containment, remediation and recovery before requesting closure.
+5. Close the incident only when all closure criteria are met.
 
 ## 8. Scenario — Web login brute force
 
-**Rule:** `WEB-BF-001` (HIGH).
+**Rule:** `WEB-BF-001` (HIGH)  
+**Source:** Nginx access logs
 
-**Trigger:** ≥20 `POST /login` requests from one `src_ip` within 120 s.
+### Triage — Analyst
 
-**Triage**
-1. Confirm the POST burst and the target path.
-2. Look for a successful login from the same IP after the burst (check the
-   Nginx `status` on later requests).
-3. Correlate with `WEB-SCAN-001` and `NET-PORTSCAN-001`.
+1. Confirm the burst: at least 20 `POST` requests to `/dvwa/login.php` or `/dvwa/vulnerabilities/brute` from one source within 120 s.
+2. Look for a successful login from the same source after the burst: a redirect or `200` where earlier attempts returned `401`.
+3. Identify the targeted account(s); one account means a targeted attack, several means password spraying.
+4. Review related events over the previous 30 minutes, including `WEB-SCAN-001` and `NET-PORTSCAN-001`.
 
-**Evidence / Containment / Recovery / Closure**
-- Export the login POST events; record attempt count and whether a login
-  succeeded.
-- Ongoing attempt → **Block IP** (3600 s).
-- Successful credential use → treat as compromise: **Block IP** + record
-  **`disable account`** for the web account and reset it.
-- Benign → **FALSE POSITIVE**; otherwise **RESOLVED** / incident closure.
+### Evidence Collection — Analyst
+
+1. Preserve the original events, timestamps and alert ID.
+2. Export the linked login `POST` events.
+3. Record the source IP, target path, attempt count, targeted account(s) and the first request that returned a successful status.
+4. Link all evidence to the alert or incident.
+
+### Investigation — Analyst
+
+1. Determine whether the traffic was an unauthorized attempt, an authorized test or a successful credential compromise.
+2. Check what the account did after any successful login: pages reached, content changed, sessions opened.
+3. Escalate any successful credential use to the SOC Lead immediately.
+
+### Containment — Lead / Admin
+
+1. For an ongoing attempt, record `block IP` with a 3600 s timeout and confirm it after approval.
+2. For a successful login, treat the account as compromised: record `disable account`, reset the account out-of-band and promote the alert to an incident.
+3. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Application Owner
+
+1. Reset the targeted account's password and revoke its sessions.
+2. Add rate-limiting or account lockout on the login endpoint and reset DVWA to a known-clean state.
+3. Confirm that legitimate logins from approved sources still work and that logging is functioning.
+
+### Closure — Admin
+
+1. Record the final findings, attempt volume, targeted accounts, impact and remediation actions.
+2. For authorized testing, record the authorization and use the supported benign/false-positive disposition.
+3. For an unsuccessful attempt, document the hardening applied, then close the alert as resolved.
+4. For a successful login, verify account disablement, credential reset and session investigation before requesting closure.
+5. Close the incident only when all closure criteria are met.
 
 ## 9. Scenario — HTTP flood
 
-**Rule:** `WEB-FLOOD-001` (MEDIUM).
+**Rule:** `WEB-FLOOD-001` (MEDIUM)  
+**Source:** Nginx access logs
 
-**Trigger:** ≥301 requests with HTTP status `301` from one `src_ip` within 60 s.
+> There is deliberately **no** attack-sim script for this: a burst of this volume
+> from a laptop at an internet-facing instance resembles the DoS traffic AWS
+> restricts. It is covered by `detection/tests/replay_test.py` and the synthetic
+> nginx log in `sample-data/`.
 
-**Note:** there is deliberately **no** attack-sim script for this — sending that
-volume from a laptop at an internet-facing instance is the kind of sustained
-traffic AWS restricts. It is covered by `detection/tests/replay_test.py` and the
-synthetic log in `sample-data/`.
+### Triage — Analyst
 
-**Triage**
-1. Confirm the request rate and status code; check whether the host is
-   CPU/connection saturated (`top`, `ss -s`).
-2. Correlate for a preceding scan (a flood is often automated abuse of a
-   discovered redirect endpoint).
-3. Distinguish a single misbehaving client from a distributed flood.
+1. Confirm the trigger: at least 301 requests returning HTTP `301` from one source within 60 s.
+2. Check whether the host is saturated: CPU, memory and connection counts (`top`, `ss -s`).
+3. Count the distinct source IPs in the window to distinguish one misbehaving client from a distributed flood.
+4. Review related events over the previous 30 minutes; a flood often follows discovery of a redirect endpoint.
 
-**Evidence**
-- Export the flood events; record `src_ip`, requests/second, and duration.
+### Evidence Collection — Analyst
 
-**Containment**
-- Single source → **Block IP** (1800–3600 s).
-- Distributed sources → blocking individual IPs is ineffective; note it and
-  consider the Security Group / an upstream AWS mitigation as the real control.
+1. Preserve the original events, timestamps and alert ID.
+2. Export the linked flood events.
+3. Record the source IP or IPs, requests per second, duration, target endpoint and the host's resource state.
 
-**Recovery / Closure**
-- Confirm the host recovers once traffic stops. Document rate/duration and close
-  as **RESOLVED**.
+### Investigation — Analyst
+
+1. Determine whether the traffic was an authorized load test, a misbehaving client or a deliberate denial-of-service attempt.
+2. Establish the impact: service degradation, failed legitimate requests or full outage.
+3. Escalate confirmed or distributed denial of service to the SOC Lead.
+
+### Containment — Lead / Admin
+
+1. For a single source, record `block IP` with a 1800–3600 s timeout and confirm it after approval.
+2. For distributed sources, note that blocking individual addresses is ineffective; raise the Security Group or an upstream mitigation with the provider instead.
+3. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Host Owner
+
+1. Confirm the host recovers once the traffic stops and monitor CPU, connections and error rates.
+2. Enable or tighten rate-limiting on the flooded endpoint and enable caching for redirect responses where appropriate.
+3. Confirm that normal service, logging and detection are functioning.
+
+### Closure — Admin
+
+1. Record the final findings, request rate, duration, impact and mitigation applied.
+2. For an authorized load test, record the authorization and use the supported benign/false-positive disposition.
+3. Document the containment action or the upstream mitigation, then close the alert as resolved.
+4. Close the incident only when all closure criteria are met.
 
 ## 10. Scenario — Generic IDS signature / unusual DNS
 
-**Rules:** `IDS-SIG-001` (HIGH), `DNS-ANOMALY-001` (LOW).
+**Rules:** `IDS-SIG-001` (HIGH) · `DNS-ANOMALY-001` (LOW)  
+**Source:** custom IDS (`ids/live_ids_ips.py`), signatures from `ids/ids.yaml`
 
-**Trigger**
-- `IDS-SIG-001`: an IDS alert the collector could not map to a specific kind —
-  e.g. the SSH-brute-force signature (`9000002`) or a SYN flood (`9000003`).
-- `DNS-ANOMALY-001`: the IDS `dns` signature (`9000004`) — high DNS rate and/or
-  oversized labels, i.e. suspected tunnelling.
+| Signature id | Really means | Follow |
+|---|---|---|
+| `9000001` | port scan | §6 |
+| `9000002` | SSH brute force | §5 |
+| `9000003` | SYN flood | §9 |
+| `9000004` | DNS tunnelling | §10 (below) |
+| `9000005` | unusual outbound | §11 |
 
-**Triage**
-1. Check the signature `msg`/`category` on the event to see which IDS signature
-   fired.
-- `IDS-SIG-001` for the SSH signature usually means the same activity that
-  produced `SSH-BF-001`; use §5 and avoid double-counting it as a second attack.
-- For SYN-flood-shaped `IDS-SIG-001`, treat like §9.
-- For `DNS-ANOMALY-001`, check the queried name pattern (long/random labels) and
-  whether it originates from the host itself or an external source.
+### Triage — Analyst
 
-**Evidence / Containment / Recovery / Closure**
-- Export the IDS events; record the signature id/msg and the source.
-- `IDS-SIG-001` → follow the mapped scenario's containment.
-- `DNS-ANOMALY-001`: if the host is *sending* unusual DNS, investigate for
-  malware/exfiltration (record **`isolate host`**); if it is receiving probe-like
-  DNS, **Block IP** if warranted.
-- Close as **RESOLVED** or, for approved test traffic, **FALSE POSITIVE**.
+1. Read the signature `id`, `msg`, `priority` and `category` on the linked event to identify which signature fired.
+2. Map the signature to its scenario using the table above and open that playbook.
+3. Check whether a dedicated alert already exists for the same source and window; the IDS is a second view of the same activity and must not be counted as a second attack.
+4. For `9000004`, confirm the DNS trigger: a label longer than 50 characters, or more than 100 queries per minute from one host, and note the queried names.
+5. For `9000004`, determine who is sending: the SOC host itself (outbound exfiltration, more serious) or an external source (probe, usually noise).
+
+### Evidence Collection — Analyst
+
+1. Preserve the original events, signature fields, timestamps and alert IDs.
+2. Export the linked IDS events; for DNS, export the queried names and query rate.
+3. Record the signature ID, message, source IP and, for DNS, the originating host, direction and resolver involved.
+4. Record the matching rule alert for the same activity, where one exists, and keep both under one incident.
+
+### Investigation — Analyst
+
+1. Determine which scenario the signature really describes and apply that scenario's investigation steps.
+2. For DNS, identify the queried domain and its reputation and check the process or user that generated the queries.
+3. Check for a preceding compromise; tunnelling is a post-compromise behaviour.
+4. Escalate any case where the SOC host is the DNS sender to the SOC Lead; treat it as suspected malware.
+
+### Containment — Lead / Admin
+
+1. Apply the containment decision of the mapped scenario's playbook and do not block twice for the same source.
+2. For a host sending unusual DNS, record `isolate host` and investigate for malware or a tunnelling agent.
+3. For a host receiving probe-like DNS, record `block IP` for the source where warranted and confirm it after approval.
+4. For known-good resolver traffic, change the allow-list or threshold instead of blocking.
+5. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Host Owner
+
+1. Apply the mapped scenario's remediation.
+2. For DNS tunnelling, remove the agent or reconfigure the application, block the domain at the resolver and tune the IDS thresholds if the traffic was legitimate.
+3. Confirm that the suspicious queries stop and that normal service, logging and detection are functioning.
+
+### Closure — Admin
+
+1. Record the final findings, the signature that fired and the scenario it represents.
+2. For authorized test traffic, record the authorization and use the supported benign/false-positive disposition.
+3. When this alert duplicates a dedicated alert, close it inside that alert's incident rather than standalone.
+4. Close the incident only when all closure criteria are met.
 
 *Reproduce the DNS case with `attack-sim/dns-tunnel-sim.sh` (runs on the
 instance).*
 
 ## 11. Scenario — Unusual outbound connection
 
-**Rule:** `NET-OUTBOUND-001` (MEDIUM).
+**Rule:** `NET-OUTBOUND-001` (MEDIUM)  
+**Source:** custom IDS signature `9000005`, from nftables `SOC_OUT:` log lines
 
-**Trigger:** the instance opens an outbound connection to a port **outside** the
-allow-list (53/80/443/123). The nftables `SOC_OUT:` rule logs the SYN; the IDS
-outbound signature (`9000005`) carries it into the SOC.
+### Triage — Analyst
 
-**Triage**
-1. Identify the destination IP/port and the process that opened it
-   (`ss -tnp`, `lsof -i`).
-2. Decide whether it is legitimate egress the allow-list should cover, a
-   mis-configured service, or command-and-control / exfiltration.
+1. Confirm the trigger: the host opened a connection to a destination port outside the allow-list (53, 80, 443, 123).
+2. Identify the destination IP and port, and the process that opened it (`ss -tnp`, `lsof -i`).
+3. Check the destination against known-good services and against any ticket for an approved change.
+4. Review related events over the previous 30 minutes, including `DNS-ANOMALY-001`, `SSH-SUCCESS-001` and web alerts; outbound traffic is a classic post-compromise signal.
 
-**Evidence**
-- Export the `SOC_OUT:` events; record `dst_ip`, `dst_port`, and the owning
-  process.
+### Evidence Collection — Analyst
 
-**Containment**
-- Known-good service → update the egress allow-list (do **not** block).
-- Suspicious/unexplained → **Block IP** the destination and record
-  **`isolate host`** pending investigation.
+1. Preserve the original events, timestamps and alert ID.
+2. Export the `SOC_OUT:` events.
+3. Record the destination IP, destination port, owning process, user, connection duration, volume and traffic pattern.
 
-**Recovery / Closure**
-- Confirm no further connections to the destination after the block.
-- Document the root cause; close **RESOLVED** (or **FALSE POSITIVE** for
-  legitimate traffic).
+### Investigation — Analyst
+
+1. Determine whether the connection is legitimate egress, a mis-configured service or command-and-control or exfiltration.
+2. Identify the process owner, its expected behaviour and whether that destination is part of it, and check the destination's reputation.
+3. Escalate unexplained outbound connections to the SOC Lead, especially where a prior compromise exists.
+
+### Containment — Lead / Admin
+
+1. For a known-good service, update the egress allow-list instead of blocking; do not break legitimate egress.
+2. For a suspicious or unexplained destination, record `block IP` for the destination and confirm it after approval.
+3. For suspected command-and-control, record `isolate host` and involve the lead.
+4. Record every containment action, its reason, owner and timestamp.
+
+### Remediation and Recovery — Admin / Host Owner
+
+1. Stop the offending process or service and reconfigure it to use an approved destination and port.
+2. Confirm no further connections to the blocked destination after containment.
+3. Review the host for the compromise that could have opened the connection; rebuild from the clean baseline when malware is confirmed.
+4. Confirm that normal service, logging and detection are functioning.
+
+### Closure — Admin
+
+1. Record the final findings, the destination, owning process, impact and remediation actions.
+2. For legitimate traffic, document the allow-list change and close the alert as resolved, or as a false positive with the authorization recorded.
+3. For command-and-control or exfiltration, verify containment, process removal and host recovery before requesting closure.
+4. Close the incident only when all closure criteria are met.
 
 ## 12. Recovery, closure and reporting (shared)
 
@@ -386,8 +510,8 @@ outbound signature (`9000005`) carries it into the SOC.
 - Handled → `CONTAINED` → **RESOLVED**.
 
 **Closure (incidents)**
-- Move `investigating → contained → resolved → closed`. Closing requires an
-  analyst/lead role.
+- Move `investigating → contained → resolved → closed`. **Only the admin closes
+  an incident**; the analyst or lead prepares the closure record.
 - Write a **root cause** and **lessons learned**; the platform computes TTC
   (time-to-contain) and TTR (time-to-resolve) from the timeline.
 

@@ -1,55 +1,61 @@
-# SQL injection (`WEB-SQLI-001`)
+# SQL Injection Playbook — `WEB-SQLI-001`
 
-**Severity** HIGH · **Category** web · **MITRE** T1190 · **Source** Nginx access log
+**Category:** Web  
+**Initial Severity:** HIGH  
+**MITRE ATT&CK:** T1190 — Exploit Public-Facing Application  
+**Source:** Nginx access logs, with application/database logs where available
 
-> A web request whose decoded URI or body contains SQL-injection tokens.
-> Determine whether the payload was only *sent* or actually *succeeded*.
+## 1. Triage — Analyst
 
-## Trigger
+1. Open the alert and identify the source IP, target host, endpoint, timestamp, HTTP method and status code.
+2. Identify the SQLi pattern that triggered the rule and inspect the linked event.
+3. Check whether the request came from an authorized test or scanner.
+4. Review related events from the same source and target over the previous 30 minutes, including `WEB-SCAN-001`, `NET-PORTSCAN-001` and `WEB-BF-001` where relevant.
+5. Do not treat an HTTP `200` response or database error as proof of successful exploitation.
 
-Decoded URI/body containing SQLi tokens such as `' or `, `" or `, `union select`,
-`select `, ` from `, `sleep(`, `--`, `/*`. Patterns live in `rules/sqli.yaml`.
+## 2. Evidence Collection — Analyst
 
-## Triage
+1. Preserve the original event, request details, timestamp and alert ID.
+2. Collect relevant Nginx access/error logs and application/database logs, where available.
+3. Capture response evidence if available and authorized. Protect sensitive data.
+4. Record the matched pattern, affected endpoint, source IP and investigation findings.
+5. Link all evidence to the alert or incident.
 
-1. Identify the exact token that matched and the endpoint it targeted
-   (commonly DVWA `/vulnerabilities/sqli/`).
-2. Read the decoded URI/body from the linked event. A legitimate apostrophe in a
-   form field can trip the pattern — confirm it is really an exploit attempt.
-3. **Check the HTTP status and response.** A `200` that echoes database output or
-   an error reveals the exploit likely **succeeded**.
-4. Correlate in the last 30 minutes: the scan that found the endpoint
-   (`WEB-SCAN-001`, `NET-PORTSCAN-001`) and any credential discovery
-   (`WEB-BF-001`).
+## 3. Investigation — Analyst
 
-## Evidence
+1. Determine whether the request was a suspicious probe, a credible exploitation attempt or a confirmed compromise.
+2. Check available application and database evidence for unauthorized data access, database changes or unexpected query behavior.
+3. Identify the affected application, database and potentially exposed data.
+4. Document findings and distinguish confirmed facts from assumptions.
+5. Escalate credible exploitation or suspected compromise to the SOC Lead.
 
-- Export the linked Nginx request events (the decoded payload is what matters).
-- If exploitation looks successful, capture the **response** (not just the log
-  line) and attach it to the incident.
-- Record: `src_ip`, endpoint, payload, HTTP status, and whether data/execution was
-  observed.
+## 4. Containment — Lead / Admin
 
-## Containment
+1. Review the analyst's findings and approve proportionate containment actions.
+2. For isolated suspicious requests without evidence of impact, continue monitoring.
+3. For credible or repeated attacks, consider an authorized temporary WAF rule, rate limit or source restriction.
+4. For confirmed compromise, coordinate restriction of the affected application or database access.
+5. Isolate a host only when justified by the evidence and approved response procedure.
+6. Record every containment action, its reason, owner and timestamp.
 
-- Isolated scanner/UA hit, no success → monitor.
-- Confirmed exploitation attempt → **Block IP** for the source and promote to an
-  incident.
-- Evidence of success (data returned) → **Block IP** immediately, record
-  **`isolate host`**, involve a lead, and treat the host as potentially compromised.
+## 5. Remediation and Recovery — Admin / Application Owner
 
-## Recovery
+1. Fix the vulnerable query using parameterized queries or prepared statements.
+2. Review database permissions and relevant logs for unauthorized access or changes.
+3. Rotate compromised credentials and revoke exposed sessions or tokens where necessary.
+4. Restore verified clean data or systems if required.
+5. Test the fix in an authorized environment and confirm the vulnerability is no longer reproducible.
+6. Confirm that normal service, logging and detection are functioning.
 
-- Review the web root and configs for unexpected files or modifications.
-- Reset the vulnerable app (DVWA) to a known-clean state.
-- If credentials were exposed, rotate them.
+## 6. Closure — Admin
 
-## Closure
+1. Record the final findings, impact, root cause and remediation actions.
+2. For authorized testing, record the authorization and use the appropriate benign/false-positive disposition supported by the platform.
+3. For an unsuccessful attempt, document the evidence and any outstanding vulnerability remediation.
+4. For confirmed compromise, verify containment, remediation and recovery before requesting closure.
+5. Close the incident only when all closure criteria are met.
 
-- Benign (own testing from an approved IP) → **FALSE POSITIVE** with a reason.
-- Real attempt, no success → **RESOLVED** with a root cause (e.g. "unpatched DVWA
-  `id` parameter") and lessons learned.
-- Success → full incident closure, signed off by a lead.
+**Important:** A matched SQLi pattern indicates suspicious activity; it does not by itself prove successful exploitation. Follow the platform's supported statuses and permissions for all alert and incident updates.
 
 ## Related
 

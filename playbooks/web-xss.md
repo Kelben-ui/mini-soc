@@ -1,49 +1,60 @@
-# Cross-site scripting (`WEB-XSS-001`)
+# Cross-site scripting (XSS) Playbook — `WEB-XSS-001`
 
-**Severity** MEDIUM · **Category** web · **MITRE** T1059 · **Source** Nginx access log
+**Category:** Web  
+**Initial Severity:** MEDIUM  
+**MITRE ATT&CK:** T1059 — Command and Scripting Interpreter  
+**Source:** Nginx access logs, with application logs where available
 
-> A web request whose decoded URI or body contains XSS tokens. Usually an
-> automated probe; confirm whether the payload was reflected.
+## 1. Triage — Analyst
 
-## Trigger
+1. Open the alert and identify the source IP, target host, endpoint, parameter, timestamp, HTTP method and status code.
+2. Identify the XSS token that triggered the rule (`<script`, `javascript:`, `onerror=`, `onload=`) and inspect the linked event.
+3. Read the decoded URI or body and confirm the token is an attack payload, not a legitimate string such as documentation text.
+4. Check the response for the payload reflected or stored unencoded; that is what turns a probe into a real finding.
+5. Review related events from the same source and target over the previous 30 minutes, including `WEB-SCAN-001`, `NET-PORTSCAN-001` and `WEB-CMD-001` where relevant.
 
-Decoded URI/body containing `<script`, `javascript:`, `onerror=`, `onload=`.
-Patterns live in `rules/xss.yaml`.
+## 2. Evidence Collection — Analyst
 
-## Triage
+1. Preserve the original event, request details, timestamp and alert ID.
+2. Export the linked Nginx access events with the decoded payload.
+3. Capture the response body if the payload was reflected or stored, and attach it to the incident. Protect any personal data it contains.
+4. Record the matched token, endpoint, parameter, source IP and whether the payload was reflected or stored.
+5. Link all evidence to the alert or incident.
 
-1. Identify the token and the endpoint/parameter it was sent to.
-2. Read the decoded URI/body from the linked event to confirm it is a payload and
-   not a benign string (a legitimate `<script>` in documentation, for example).
-3. Check whether the response **reflected** the payload unencoded — that is what
-   turns a probe into a real finding.
-4. Correlate with `WEB-SCAN-001` / `NET-PORTSCAN-001` (the scan that found the
-   endpoint) and other web rules in the last 30 minutes.
+## 3. Investigation — Analyst
 
-## Evidence
+1. Determine whether the request was a probe, a credible attempt or a confirmed stored injection.
+2. Review stored content such as guestbook entries, profiles and comments for the persisted payload.
+3. Identify the affected endpoint, the pages other users would view and the accounts that could load the payload.
+4. Document findings and separate confirmed facts from assumptions.
+5. Escalate reflected or stored payloads, and any suspected account takeover, to the SOC Lead.
 
-- Export the linked Nginx request events with the decoded payload.
-- If reflection is suspected, capture the response and attach it to the incident.
-- Record: `src_ip`, endpoint, parameter, payload, and whether it was reflected.
+## 4. Containment — Lead / Admin
 
-## Containment
+1. Review the analyst's findings and approve proportionate containment actions.
+2. For an isolated probe with no reflection, continue monitoring.
+3. For a reflected payload or an active attack chain, record `block IP` for the source and confirm it after approval.
+4. For a stored payload, treat the impact as code execution in another user's browser: record `isolate host` and involve the lead.
+5. Record every containment action, its reason, owner and timestamp.
 
-- Isolated probe, no reflection → monitor.
-- Reflected/stored payload or part of an active chain → **Block IP** for the source
-  and promote to an incident.
-- If the payload was **stored** server-side, treat like code execution: record
-  **`isolate host`** and involve a lead.
+## 5. Remediation and Recovery — Admin / Application Owner
 
-## Recovery
+1. Fix the endpoint to encode output for its context: HTML, attribute, JavaScript or URL.
+2. Sanitize any accepted markup on input and add a Content Security Policy where the platform supports one.
+3. Remove any stored payload from the affected pages and profiles.
+4. Reset the vulnerable application (DVWA) to a known-clean state.
+5. Revoke sessions or tokens if an account could have been taken over.
+6. Test the fix in an authorized environment and confirm the payload no longer executes.
 
-- Confirm the vulnerable endpoint now encodes output; reset DVWA to a clean state.
-- Check stored pages (guestbooks, profiles) for persisted payloads.
+## 6. Closure — Admin
 
-## Closure
+1. Record the final findings, impact, root cause and remediation actions.
+2. For authorized testing, record the authorization and use the supported benign/false-positive disposition.
+3. For a reflected attempt that was not stored, document the fix that removed the reflection and close the alert as resolved.
+4. For stored payloads or account impact, verify containment and remediation before requesting closure.
+5. Close the incident only when all closure criteria are met.
 
-- Benign (approved test traffic) → **FALSE POSITIVE** with a reason.
-- Real attempt, not reflected → **RESOLVED** with root cause and lessons learned.
-- Reflected/stored → full incident closure.
+**Important:** A matched XSS token proves that a payload was sent; it does not prove that the payload was reflected, stored or executed. Confirm reflection or storage before reporting a confirmed finding.
 
 ## Related
 

@@ -1,51 +1,62 @@
-# IDS signature detection (`IDS-SIG-001`)
+# Generic IDS Signature Playbook — `IDS-SIG-001`
 
-**Severity** HIGH (mapped) · **Category** ids · **MITRE** T1059 · **Source** custom IDS (`ids/live_ids_ips.py`)
+**Category:** IDS  
+**Initial Severity:** HIGH  
+**MITRE ATT&CK:** T1059 — Command and Scripting Interpreter  
+**Source:** Custom IDS (`ids/live_ids_ips.py`), signature taken from `ids/ids.yaml`
 
-> A generic alert from the custom IDS that the collector could not map to a more
-> specific rule. Read the signature to work out which scenario this really is.
+## 1. Triage — Analyst
 
-## Trigger
+1. Open the alert and identify the source IP, target host and timestamp.
+2. Read the signature `id`, `msg`, `priority` and `category` on the linked event to identify which signature fired.
+3. Map the signature to the real scenario: `9000001` port scan, `9000002` SSH brute force, `9000003` SYN flood, `9000004` DNS tunnelling, `9000005` unusual outbound connection.
+4. Check whether an alert of the mapped type already exists for the same source and window; the IDS is a second view of the same activity and must not be counted as a second attack.
+5. Review related events from the same source over the previous 30 minutes and open the mapped playbook for the scenario.
 
-An IDS alert whose kind is not mapped to a dedicated rule — for example the SSH
-brute-force signature (`9000002`) or a SYN flood (`9000003`). The catch-all lives
-in `rules/ids_signature.yaml`; severity is taken from the signature's
-`severity`/`priority`.
+## 2. Evidence Collection — Analyst
 
-| Signature id | Really means | Follow |
-|---|---|---|
-| `9000001` | port scan | `port-scan.md` |
-| `9000002` | SSH brute force | `ssh-brute-force.md` |
-| `9000003` | SYN flood | treat like `http-flood.md` |
-| `9000004` | DNS anomaly | `unusual-dns.md` |
-| `9000005` | unusual outbound | `unusual-outbound.md` |
+1. Preserve the original event, signature fields, timestamps and alert ID.
+2. Export the linked IDS events for the source.
+3. Record the signature ID, message, priority, category, source IP and any destination details.
+4. Record the matching rule alert for the same activity, where one exists, and keep both under one incident.
+5. Link all evidence to the alert or incident.
 
-## Triage
+## 3. Investigation — Analyst
 
-1. Read the signature `msg`/`category` on the linked event to identify which
-   signature fired.
-2. Most often this is **duplicate telemetry** for an activity that already has its
-   own alert (e.g. `9000002` alongside `SSH-BF-001`). Investigate it together with
-   that alert instead of counting it twice.
-3. For a SYN-flood-shaped `IDS-SIG-001`, follow the HTTP flood playbook.
+1. Determine which scenario the signature really describes and apply that scenario's triage steps.
+2. Verify whether the same activity already produced a dedicated rule alert; if so, investigate the pair together and do not duplicate the finding.
+3. Identify the affected host or service and the activity the signature describes.
+4. Document findings and separate confirmed facts from assumptions.
+5. Escalate per the mapped scenario: SSH success and suspected execution go to the SOC Lead immediately.
 
-## Evidence
+## 4. Containment — Lead / Admin
 
-- Export the linked IDS events; record the signature id/msg and the source.
+1. Apply the containment decision of the mapped scenario's playbook.
+2. Record `block IP` for the source where the mapped scenario calls for it, and confirm it after approval.
+3. Record `disable account` or `isolate host` where the mapped scenario calls for them; those remain manual actions after they are recorded.
+4. Do not block twice when a dedicated alert already triggered containment for the same source.
+5. Record every containment action, its reason, owner and timestamp.
 
-## Containment
+## 5. Remediation and Recovery — Admin / Host Owner
 
-- Follow the mapped scenario's containment decision.
-- Only `block IP` is executable; it is recorded then confirmed by a human.
+1. Apply the remediation of the mapped scenario's playbook.
+2. For signature `9000002`, complete the SSH hardening from the SSH brute-force playbook: reset targeted credentials and switch to key-only authentication.
+3. For signature `9000003`, apply the denial-of-service mitigations from the HTTP flood playbook.
+4. For signature `9000004` or `9000005`, follow the unusual DNS or unusual outbound playbook.
+5. Confirm that normal service, logging and detection are functioning after recovery.
 
-## Recovery / Closure
+## 6. Closure — Admin
 
-- Close as **RESOLVED**, or **FALSE POSITIVE** for approved test traffic.
-- When it duplicates another alert, close it as part of that alert's incident.
+1. Record the final findings, the signature that fired and the scenario it represents.
+2. For authorized test traffic, record the authorization and use the supported benign/false-positive disposition.
+3. When this alert duplicates a dedicated alert, close it inside that alert's incident rather than standalone.
+4. For a unique signature with no dedicated alert, document the root cause and any tuning needed on the IDS, then close the alert as resolved.
+5. Close the incident only when all closure criteria are met.
+
+**Important:** `IDS-SIG-001` is a catch-all; the signature determines the real scenario, and duplicate telemetry for the same activity must never be counted as a second attack.
 
 ## Related
 
 - **Rule definition:** `rules/ids_signature.yaml`
-- **Reproduce:** `attack-sim/port-scan.sh <target>` or
-  `attack-sim/ssh-brute-force.sh <target> testuser passlist.txt` (both feed the IDS)
+- **Reproduce:** `attack-sim/port-scan.sh <target>` (feeds the IDS)
 - **Platform model, universal steps, containment and closure:** [`incident-response.md`](/playbooks/incident-response.md)

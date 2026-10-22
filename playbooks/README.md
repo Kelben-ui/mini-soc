@@ -1,7 +1,8 @@
 # Playbooks
 
 Incident-response playbooks for the Mini SOC. Each one maps a detection rule to
-the triage, evidence, containment, recovery and closure steps an analyst follows.
+the triage, evidence, investigation, containment, recovery and closure steps an
+analyst follows.
 
 Every rule has its **own standalone playbook**. The alert detail page loads the
 playbook for the rule that fired, so an analyst opening an alert sees exactly the
@@ -55,6 +56,13 @@ Rendered on the alert detail page
 
 ## Conventions
 
+- **Every playbook uses the same six sections**, in the same order, each owned
+  by a named role and written as direct commands: `1. Triage — Analyst`,
+  `2. Evidence Collection — Analyst`, `3. Investigation — Analyst`,
+  `4. Containment — Lead / Admin`, `5. Remediation and Recovery — Admin /
+  <owner>`, `6. Closure — Admin`. A `**Important:**` line closes each one with
+  what the alert does and does not prove, followed by a short `Related` footer
+  (rule YAML, reproduce command, umbrella link).
 - **Containment is the confirmed `block IP` action** — the only response action
   the platform executes (it runs `/usr/local/sbin/soc-block`, adding the address
   to the nftables `blocklist` set with a timeout). `disable account` and
@@ -66,7 +74,8 @@ Rendered on the alert detail page
 - Alert states: `NEW → INVESTIGATING → CONTAINED → RESOLVED` (or
   `FALSE POSITIVE` from `NEW`/`INVESTIGATING`, reason required).
 - Incident states: `open → investigating → contained → resolved → closed`
-  (closing needs an analyst/lead role).
+  (only the admin closes an incident; the analyst or lead prepares the closure
+  record).
 
 ## Adding a rule
 
