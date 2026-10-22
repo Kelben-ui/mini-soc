@@ -90,8 +90,8 @@ Notes:
 ### 3.1 Log agent (Phase 3 rewrite, spec §4.1)
 
 `agents/log_agent/` is config-driven: everything the agent does is read from
-`/etc/mini-soc/agent.yaml` (rendered from `agents/agent.example.yaml` by
-`install.sh`) - collector URL, API key, host, heartbeat, batch sizes, buffer
+`agents/agent.yaml` (copied from `agents/agent.example.yaml`) - collector URL,
+API key, host, heartbeat, batch sizes, buffer
 dir and the source list.  Behaviour:
 
 - **Offsets (3.2)** — `(path, inode)` byte offsets persist in
@@ -124,7 +124,7 @@ dir and the source list.  Behaviour:
 
 `ids/live_ids_ips.py` replaces Suricata. It is **config-driven** — every
 threshold, window, cooldown, allow-list, output path and hostname is read from
-`/etc/mini-soc/ids.yaml` (`IDS_CONFIG`); a small set of `IDS_*`/`SOC_HOSTNAME`
+`ids/ids.yaml` (`IDS_CONFIG`); a small set of `IDS_*`/`SOC_HOSTNAME`
 environment variables (injected via the unit's `EnvironmentFile`) override
 individual values, which is what the tests use to keep clocks small.
 
@@ -174,10 +174,10 @@ The canonical layout (created by `deploy/install.sh`):
 |---|---|
 | Code | `/home/ubuntu/mini-soc` |
 | Venv | `/home/ubuntu/mini-soc/.venv` |
-| Config | `/etc/mini-soc/.env` (0640, `root:mini-soc`) |
-| Agent config | `/etc/mini-soc/agent.yaml` (0640, `root:mini-soc`) |
-| IDS config | `/etc/mini-soc/ids.yaml` (0640, `root:mini-soc`) |
-| Allow-list | `/etc/mini-soc/allowlist.txt` (0640, `root:mini-soc`, rendered from `ids.yaml`) |
+| Config | `<repo>/.env` (repo root; systemd `EnvironmentFile=`) |
+| Agent config | `<repo>/agents/agent.yaml` |
+| IDS config | `<repo>/ids/ids.yaml` |
+| Allow-list | `<repo>/rules/allowlist.txt` (rendered from `ids.yaml`) |
 | Block helper | `/usr/local/sbin/soc-block` + `/etc/sudoers.d/mini-soc-soc-block` |
 | Firewall | `/etc/nftables.conf` (logs `SOC_DROP:`/`SOC_OUT:`, holds the `blocklist` set) |
 | State | `/var/lib/mini-soc/{evidence,agent/spool}` + `agent/state.json` |

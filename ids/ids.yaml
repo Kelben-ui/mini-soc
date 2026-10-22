@@ -1,11 +1,11 @@
 # Mini SOC IDS configuration (task 4.2).
 #
-# install.sh copies this file to /etc/mini-soc/ids.yaml (0640, root:mini-soc).
+# Live configuration: ids/ids.yaml in the repo (IDS_CONFIG overrides the path).
 # The daemon reads every threshold, window, allow-list entry, output path and
 # signature from here - nothing is hard-coded in ids/live_ids_ips.py.
 #
 # A small set of IDS_*/SOC_HOSTNAME environment variables (systemd
-# EnvironmentFile = /etc/mini-soc/.env) can override individual values without
+# EnvironmentFile = the repo .env) can override individual values without
 # editing this file; the YAML remains the primary source.
 
 # --- Detection thresholds / windows ----------------------------------------

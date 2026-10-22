@@ -1,0 +1,66 @@
+# Mini SOC log agent configuration.
+#
+# Copy this file to agents/agent.yaml - the agent reads every runtime value
+# from there, nothing is hard-coded in agents/log_agent/agent.py.
+#
+# The ingest API key is intentionally NOT stored here: it is read from
+# INGEST_API_KEY in the repo .env (systemd EnvironmentFile), which keeps
+# the secret out of the repo.
+
+# --- Collector --------------------------------------------------------------
+collector_url: "http://127.0.0.1:9000/ingest"
+
+# --- Identity ---------------------------------------------------------------
+# host is written on every event; when omitted SOC_HOSTNAME (env) or the
+# machine hostname is used.  name identifies this agent in heartbeats.
+host: ""
+name: "log-agent"
+
+# --- Heartbeat (task 3.7) ---------------------------------------------------
+heartbeat:
+  url: "http://127.0.0.1:8000/api/agents/heartbeat"
+  seconds: 30
+  # Reported alongside the agent so Overview can show IDS health.
+  ids_service: "mini-soc-ids"
+
+# --- Batching (task 3.4) ----------------------------------------------------
+# Send one POST per source when either threshold is reached.
+batch:
+  max_lines: 200
+  max_seconds: 2
+
+# How often each file source is polled for new lines.
+poll_seconds: 1
+
+# --- Buffer / state (tasks 3.2, 3.5) ---------------------------------------
+# Offsets live in <buffer_dir>/state.json; failed batches spool under
+# <buffer_dir>/spool/.
+buffer_dir: "/var/lib/mini-soc/agent"
+
+# --- File sources (tasks 3.2, 3.3, 3.6) ------------------------------------
+# `multiline_start` (optional) is a regex marking the first line of a logical
+# entry.  Lines that do not match are joined onto the preceding match, so a
+# multi-line record reaches the collector as one entry.  nginx writes PHP
+# FastCGI stack traces this way in error.log; without the join those
+# continuation lines parse to nothing and the collector rejects them (HTTP 422).
+files:
+  - path: "/var/log/nginx/access.log"
+    log_type: "nginx_access"
+
+  - path: "/var/log/nginx/error.log"
+    log_type: "nginx_error"
+    multiline_start: '^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \['
+
+  - path: "/var/log/auth.log"
+    log_type: "auth"
+
+  - path: "/var/log/mini_soc_ids.json"
+    log_type: "mini_soc_ids"
+
+# --- Journal sources (task 3.6) --------------------------------------------
+# The firewall log is read from the kernel journal.  The journald cursor file
+# is the offset (unlike file sources, journald owns the checkpoint).
+journal:
+  - log_type: "firewall"
+    args: ["-k"]
+    cursor_file: "/var/lib/mini-soc/agent/journal-kernel.cursor"

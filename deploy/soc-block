@@ -24,7 +24,15 @@ TABLE="inet"
 FAMILY_TABLE="filter"
 SET="blocklist"
 DEFAULT_TIMEOUT=3600
-ALLOWLIST_FILE="${SOC_BLOCK_ALLOWLIST_FILE:-/etc/mini-soc/allowlist.txt}"
+# The allow-list lives with the rest of the runtime configuration.  The
+# install scripts render @APP_DIR@ into the copy in /usr/local/sbin;
+# SOC_BLOCK_ALLOWLIST_FILE overrides it, and the legacy /etc/mini-soc path
+# is still honoured when it exists.
+DEFAULT_ALLOWLIST_FILE="@APP_DIR@/rules/allowlist.txt"
+ALLOWLIST_FILE="${SOC_BLOCK_ALLOWLIST_FILE:-$DEFAULT_ALLOWLIST_FILE}"
+if [ ! -r "$ALLOWLIST_FILE" ] && [ -r /etc/mini-soc/allowlist.txt ]; then
+    ALLOWLIST_FILE="/etc/mini-soc/allowlist.txt"
+fi
 
 usage() {
     echo "usage: soc-block {add|del} <ipv4> [timeout_seconds]" >&2

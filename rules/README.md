@@ -61,7 +61,7 @@ mitre: T1110
   for the same `group_by` key(s). Without it, one match = one alert.
 - **`allowlist.yaml`** — `global.ips`/`global.cidrs` are suppressed entirely;
   `per_rule` suppresses only the named rule for those sources. The same list is
-  mirrored to `/etc/mini-soc/allowlist.txt` for the block helper.
+  mirrored to `rules/allowlist.txt` for the block helper.
 
 ## Adding / disabling a rule
 

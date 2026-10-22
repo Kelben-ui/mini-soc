@@ -76,7 +76,9 @@ PY
 chmod 640 "$ALLOWLIST_FILE" 2>/dev/null || true
 chown root:"$SOC_USER" "$ALLOWLIST_FILE" 2>/dev/null || true
 
-install -m 0755 "$APP_DIR/deploy/soc-block" /usr/local/sbin/soc-block
+sed -e "s|@APP_DIR@|$APP_DIR|g" \
+    "$APP_DIR/deploy/soc-block" > /usr/local/sbin/soc-block
+install -m 0755 /usr/local/sbin/soc-block /usr/local/sbin/soc-block
 sed -e "s|@SOC_USER@|$SOC_USER|g" \
     "$APP_DIR/deploy/sudoers/mini-soc-soc-block" \
     > /etc/sudoers.d/mini-soc-soc-block

@@ -1,11 +1,10 @@
 # Mini SOC log agent configuration.
 #
-# install.sh copies this file to /etc/mini-soc/agent.yaml (0640,
-# root:mini-soc).  The agent reads every runtime value from here - nothing is
-# hard-coded in agents/log_agent/agent.py.
+# Copy this file to agents/agent.yaml - the agent reads every runtime value
+# from there, nothing is hard-coded in agents/log_agent/agent.py.
 #
 # The ingest API key is intentionally NOT stored here: it is read from
-# INGEST_API_KEY in /etc/mini-soc/.env (systemd EnvironmentFile), which keeps
+# INGEST_API_KEY in the repo .env (systemd EnvironmentFile), which keeps
 # the secret out of the repo.
 
 # --- Collector --------------------------------------------------------------

@@ -8,7 +8,7 @@ DATABASE_URL = get_env("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError(
         "DATABASE_URL is not set; configure it in "
-        "/etc/mini-soc/.env (or $ENV_FILE)."
+        "the repo .env (or $ENV_FILE)."
     )
 
 engine = create_engine(DATABASE_URL)

@@ -1,8 +1,13 @@
 """Agent configuration loader (task 3.1).
 
-The agent reads every runtime value from ``agent.yaml`` (installed at
-``/etc/mini-soc/agent.yaml``).  A small set of environment overrides - the
-systemd ``EnvironmentFile`` values - let the deployment point the agent at a
+The agent reads every runtime value from ``agent.yaml``.  Resolution order:
+
+1. explicit ``path`` argument (tests).
+2. ``$AGENT_CONFIG`` (systemd ``EnvironmentFile``).
+3. ``<repo>/agents/agent.yaml`` (live local configuration).
+4. ``/etc/mini-soc/agent.yaml`` (legacy production installs).
+
+A small set of environment overrides let the deployment point the agent at a
 different file or URL without editing the YAML.
 
 Nothing about the host, collector, watched files, batching or buffer
@@ -19,7 +24,9 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_CONFIG_PATH = "/etc/mini-soc/agent.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_CONFIG_PATH = REPO_ROOT / "agents" / "agent.yaml"
+LEGACY_CONFIG_PATH = Path("/etc/mini-soc/agent.yaml")
 DEFAULT_IDS_SERVICE = "mini-soc-ids"
 
 
@@ -192,27 +199,31 @@ def _resolve_journal(raw: dict) -> list[JournalSource]:
     return sources
 
 
+def _resolve_config_path(path: str | None) -> Path:
+    """Return the agent.yaml to load (see module docstring for the order)."""
+    explicit = path or os.getenv("AGENT_CONFIG")
+    if explicit:
+        return Path(explicit)
+    if REPO_CONFIG_PATH.exists():
+        return REPO_CONFIG_PATH
+    return LEGACY_CONFIG_PATH
+
+
 def load_config(path: str | None = None) -> AgentConfig:
     """Load and validate the agent configuration."""
-    config_path = (
-        path
-        or _env("AGENT_CONFIG")
-        or DEFAULT_CONFIG_PATH
-    )
-
-    resolved = Path(config_path)
+    resolved = _resolve_config_path(path)
 
     if not resolved.exists():
         raise FileNotFoundError(
-            f"agent config not found: {config_path} "
-            "(copy agents/agent.example.yaml to /etc/mini-soc/agent.yaml)"
+            f"agent config not found: {resolved} "
+            "(copy agents/agent.example.yaml to agents/agent.yaml)"
         )
 
     with resolved.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
     if not isinstance(raw, dict):
-        raise ValueError(f"agent config {config_path} must be a YAML mapping")
+        raise ValueError(f"agent config {resolved} must be a YAML mapping")
 
     batch = raw.get("batch") or {}
 

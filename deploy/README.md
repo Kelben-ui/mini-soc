@@ -28,6 +28,12 @@ sudo MINI_SOC_REPO_URL=https://github.com/Kelben-ui/mini-soc.git \
 Key paths are overridable via environment variables (see the top of
 `install.sh`).
 
+> **Note:** `install.sh` targets EC2 and writes runtime config under
+> `/etc/mini-soc/`. The live local lab keeps every runtime config in the repo
+> instead (`<repo>/.env`, `agents/agent.yaml`, `ids/ids.yaml`,
+> `rules/allowlist.txt`); only OS-owned artifacts (systemd units, nginx site,
+> `nftables.conf`, TLS cert, sudoers rule) are installed system-wide.
+
 ## Update an existing host
 
 ```bash

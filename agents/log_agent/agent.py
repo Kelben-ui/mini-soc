@@ -1,6 +1,7 @@
 """Mini SOC log agent (Phase 3 rewrite).
 
-Reads its configuration from ``/etc/mini-soc/agent.yaml`` and:
+Reads its configuration from ``agents/agent.yaml`` (repo fallback; see
+``config.py`` for the resolution order) and:
 
 * tails the configured log files, remembering ``(inode, offset)`` in
   ``state.json`` so a restart never loses or duplicates a line (3.2);

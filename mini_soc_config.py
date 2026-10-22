@@ -3,9 +3,10 @@
 All services share one configuration file.  The resolution order is:
 
 1. ``$ENV_FILE`` when set (explicit override).
-2. ``/etc/mini-soc/.env`` (production; systemd also injects it via
+2. ``<repo>/.env`` (live configuration; systemd also injects it via
    ``EnvironmentFile=``).
-3. ``<repo>/.env`` (local development fallback).
+3. ``/etc/mini-soc/.env`` (legacy EC2 installs only — kept as a last-resort
+   fallback; the file no longer exists on the local lab host).
 
 Loading is best-effort and never overrides a value that already exists in
 the process environment (``override=False``), so systemd-provided variables
@@ -37,11 +38,11 @@ def resolve_env_file() -> Path | None:
     explicit = os.getenv("ENV_FILE")
     if explicit:
         return Path(explicit)
-    if SYSTEM_ENV_FILE.exists():
-        return SYSTEM_ENV_FILE
     repo_env = REPO_ROOT / ".env"
     if repo_env.exists():
         return repo_env
+    if SYSTEM_ENV_FILE.exists():
+        return SYSTEM_ENV_FILE
     return None
 
 

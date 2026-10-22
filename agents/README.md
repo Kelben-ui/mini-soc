@@ -9,13 +9,13 @@ dumb: every path, URL and batch size comes from configuration, never from code.
 | Path | Role |
 |---|---|
 | `log_agent/agent.py` | Entry point and run loop (`python -m agents.log_agent.agent`). |
-| `log_agent/config.py` | Loads `/etc/mini-soc/agent.yaml`, then applies environment overrides. |
+| `log_agent/config.py` | Loads `agents/agent.yaml` (repo; `$AGENT_CONFIG` overrides), then applies environment overrides. |
 | `log_agent/tailer.py` | Follows a file and survives rotation / truncation. |
 | `log_agent/offsets.py` | Persists `(path, inode)` offsets so a restart never loses or duplicates a line. |
 | `log_agent/sender.py` | Batches lines and POSTs them; spools to disk when the collector is unavailable. |
 | `log_agent/heartbeat.py` | Periodic liveness beacon to the backend. |
 | `log_agent/tests/` | Unit tests — run with `pytest agents`. |
-| [`agent.example.yaml`](agent.example.yaml) | Template, installed to `/etc/mini-soc/agent.yaml` by `deploy/install.sh`. |
+| [`agent.example.yaml`](agent.example.yaml) | Template — copy to `agents/agent.yaml` (the live config). |
 
 ## Sources watched
 
@@ -46,7 +46,7 @@ dumb: every path, URL and batch size comes from configuration, never from code.
 
 ## Configuration
 
-`/etc/mini-soc/agent.yaml` (installed from `agent.example.yaml`, mode `0640`).
+`agents/agent.yaml` (copied from `agent.example.yaml`).
 Environment variables override YAML. See `log_agent/config.py` for the full list
 (`COLLECTOR_INGEST_URL` / `COLLECTOR_URL`, `BACKEND_URL` for the heartbeat,
 `SOC_HOSTNAME`, `INGEST_API_KEY`, `AGENT_CONFIG`, `AGENT_BUFFER_DIR`,
@@ -60,7 +60,7 @@ Environment variables override YAML. See `log_agent/config.py` for the full list
 pytest agents -q
 
 # One-shot / foreground run (dev); reads $AGENT_CONFIG,
-# default /etc/mini-soc/agent.yaml
+# default <repo>/agents/agent.yaml
 python -m agents.log_agent.agent
 ```
 

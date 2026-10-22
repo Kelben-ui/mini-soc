@@ -20,10 +20,10 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 
-from mini_soc_config import get_env, get_int, get_list
+from mini_soc_config import REPO_ROOT, get_env, get_int, get_list
 
 DEFAULT_HELPER = "/usr/local/sbin/soc-block"
-DEFAULT_ALLOWLIST_FILE = "/etc/mini-soc/allowlist.txt"
+DEFAULT_ALLOWLIST_FILE = str(REPO_ROOT / "rules" / "allowlist.txt")
 DEFAULT_TIMEOUT = 3600
 HELPER_TIMEOUT_SECONDS = 20
 

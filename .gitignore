@@ -61,3 +61,6 @@ attack-sim/attack-log.txt
 
 # Local credentials for the live end-to-end launcher.
 scripts/live-e2e.env
+
+# Backup files
+*.backup
