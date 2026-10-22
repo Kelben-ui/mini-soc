@@ -8,6 +8,8 @@ Wants=soc-collector.service
 Type=simple
 User=@SOC_USER@
 Group=@SOC_USER@
+StateDirectory=mini-soc
+StateDirectoryMode=0750
 # The agent tails /var/log/{auth,kern,nginx/*}.log (root:adm 0640) and the IDS
 # output /var/log/mini_soc_ids.json (mini-soc-ids:mini-soc 0640), so it needs the
 # adm and mini-soc-ids supplementary groups to read them.  The firewall source
