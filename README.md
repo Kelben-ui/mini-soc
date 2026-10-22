@@ -40,7 +40,8 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
 ## Deployment notes
 
 - **Layout** — code `/home/ubuntu/mini-soc`, venv `/home/ubuntu/mini-soc/.venv`,
-  config `/etc/mini-soc/.env` (0640 `root:mini-soc`), state
+  config `<repo>/.env` (loaded by systemd `EnvironmentFile=` and
+  `mini_soc_config.py`), state
   `/var/lib/mini-soc/{evidence,agent}`, logs via journald. The task plan said
   `/opt/mini-soc`; the repo was standardized on `/home/ubuntu/mini-soc` to match
   the live lab instance (see the deviations table).
@@ -60,8 +61,8 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
   The backend mounts every route under `/api/...`, so the proxy is
   `proxy_pass http://127.0.0.1:8000;` with **no** trailing slash (a trailing
   slash would strip `/api` and 404).
-- **Log agent (Phase 1.8 → Phase 3 rewrite)** — reads `/etc/mini-soc/agent.yaml`
-  (installed from `agents/agent.example.yaml`); nothing is hard-coded in the
+- **Log agent (Phase 1.8 → Phase 3 rewrite)** — reads `agents/agent.yaml`
+  (from `agents/agent.example.yaml`); nothing is hard-coded in the
   agent. It tails `{nginx access.log, nginx error.log, auth.log,
   mini_soc_ids.json}` with `(path, inode)` offsets in
   `/var/lib/mini-soc/agent/state.json` (restart never loses or duplicates a
@@ -78,7 +79,7 @@ sudo bash ~/mini-soc/deploy/update.sh   # pull, deps, migrate, build, re-render 
   output and the kernel journal - never as root.
 - **IDS/IPS (Phase 4)** — `ids/live_ids_ips.py` replaces Suricata and is
   **detection-only**. Every threshold, window, allow-list and signature is read
-  from `/etc/mini-soc/ids.yaml` (nothing hard-coded). It tails the nftables
+  from `ids/ids.yaml` (nothing hard-coded). It tails the nftables
   `SOC_DROP:`/`SOC_OUT:` journal lines (+ auth log) and sniffs DNS off the wire
   with `CAP_NET_RAW`, writing one Suricata-style JSON line per alert to
   `/var/log/mini_soc_ids.json`. Blocking is a separate, human-confirmed step:
@@ -121,16 +122,16 @@ IDS, multi-VM → one EC2) were agreed with the supervisor in week 1; see
 
 - Code: `/home/ubuntu/mini-soc/`
 - Venv: `/home/ubuntu/mini-soc/.venv/`
-- Config: `/etc/mini-soc/.env` (0640)
-- Agent config: `/etc/mini-soc/agent.yaml` (0640)
+- Config: `<repo>/.env` (repo root)
+- Agent config: `<repo>/agents/agent.yaml`
 - Evidence: `/var/lib/mini-soc/evidence/`
 - Agent spool: `/var/lib/mini-soc/agent/spool/`
 - Agent offsets: `/var/lib/mini-soc/agent/state.json`
 - Detection checkpoint: `/var/lib/mini-soc/detection_checkpoint.json`
 - Logs: journald (`journalctl -u soc-detection -f`)
 - IDS output: `/var/log/mini_soc_ids.json`
-- IDS config: `/etc/mini-soc/ids.yaml` (0640)
-- Response allow-list: `/etc/mini-soc/allowlist.txt` (0640)
+- IDS config: `<repo>/ids/ids.yaml`
+- Response allow-list: `<repo>/rules/allowlist.txt`
 - Block helper: `/usr/local/sbin/soc-block` + `/etc/sudoers.d/mini-soc-soc-block`
 - Host firewall: `/etc/nftables.conf`
 - nginx site: `/etc/nginx/sites-available/mini-soc.conf`
@@ -144,6 +145,30 @@ Replay test (13 rules against SQLite or the configured DB), from the repo root:
 PYTHONPATH=. DATABASE_URL=sqlite:///./ci-replay.db .venv/bin/python detection/tests/replay_test.py
 # expects "REPLAY TEST PASSED"
 ```
+
+## Live end-to-end test (local lab)
+
+`scripts/live-e2e.sh` brings up every component the demo path needs on this
+host — PostgreSQL, MariaDB, PHP-FPM, nginx (DVWA on `:80`, dashboard on
+`:443`), nftables, rsyslog and the five `soc-*`/IDS services — verifies each
+one, and (with `--attack`) fires the lab attack payloads so the alerts and
+events appear in the dashboard while you watch them:
+
+```bash
+sudo bash scripts/live-e2e.sh            # start + verify everything
+sudo bash scripts/live-e2e.sh --attack   # ...then generate the alerts
+sudo bash scripts/live-e2e.sh --status   # report only, change nothing
+sudo bash scripts/live-e2e.sh --help     # all flags
+```
+
+The script is idempotent (it starts what is stopped and leaves healthy
+services alone) and needs root, because it drives systemd and the `atk`
+network namespace used by the network rules.
+
+Then open DVWA at `http://127.0.0.1/dvwa/login.php` (`admin` / `password`)
+and the dashboard at `https://127.0.0.1/` (`admin` / the dashboard password —
+override with `SOC_USER` / `SOC_PASS`). The pages that matter are
+`/alerts` and `/events`.
 
 ## Recovering the EC2 box from the repo (single source of truth)
 

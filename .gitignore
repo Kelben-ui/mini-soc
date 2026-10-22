@@ -58,3 +58,6 @@ frontend/dist/
 # attack-log.txt is the run-time evidence trail.
 attack-sim/target.conf
 attack-sim/attack-log.txt
+
+# Local credentials for the live end-to-end launcher.
+scripts/live-e2e.env
