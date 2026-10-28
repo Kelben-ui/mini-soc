@@ -102,16 +102,16 @@ def nginx_lines():
         body="",
     ))
 
-    # WEB-BF-001: 20x POST /login 401 from one src inside the 120s window.
+    # WEB-BF-001: 20x POST /dvwa/login.php 401 from one src inside the 120s window.
     for i in range(20):
         lines.append(SOC.format(
             ip=BRUTER,
             ts=f"2026-10-13T09:16:{i:02d}+00:00",
             method="POST",
-            target="/login",
+            target="/dvwa/login.php",
             status=401,
             bytes=512,
-            referer="http://127.0.0.1/login",
+            referer="http://127.0.0.1/dvwa/login.php",
             ua="curl/8.0",
             body="username=admin&password=guess01",
         ))

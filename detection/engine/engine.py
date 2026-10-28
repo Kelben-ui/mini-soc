@@ -110,8 +110,8 @@ def run_detection(db: Session, rules: list[dict]):
     # ---------------------------------------------------------
     # Determine the largest rule time window.
     #
-    # We only need to inspect recent events. This prevents the
-    # engine from repeatedly processing the entire event history.
+    # We need enough context for threshold rules; also ensure
+    # backfilled/unlinked events are evaluated.
     # ---------------------------------------------------------
 
     windows = [
@@ -122,89 +122,57 @@ def run_detection(db: Session, rules: list[dict]):
 
     max_window_seconds = max(windows, default=300)
 
-    latest_event = (
-        db.query(Event)
-        .order_by(Event.timestamp.desc())
-        .first()
+    # Find events that are not yet linked to any alert
+    linked_event_ids = set(
+        row[0] for row in db.query(AlertEvent.event_id).all()
     )
 
-    if not latest_event:
-        return []
-
-    latest_timestamp = latest_event.timestamp
-
-    detection_start = (
-        latest_timestamp
-        - timedelta(seconds=max_window_seconds)
-    )
-
-    # ---------------------------------------------------------
-    # Only inspect the recent detection window.
-    # ---------------------------------------------------------
-
-    events = (
+    unlinked_events = (
         db.query(Event)
-        .filter(
-            Event.timestamp >= detection_start,
-            Event.timestamp <= latest_timestamp,
-        )
-        .order_by(Event.timestamp.asc())
+        .filter(~Event.event_id.in_(linked_event_ids) if linked_event_ids else True)
         .all()
     )
 
-    if not events:
-        return []
-
-    # ---------------------------------------------------------
-    # Determine which events have already been linked to alerts.
-    #
-    # An event can legitimately be linked to more than one alert,
-    # but an event with no AlertEvent link is completely new.
-    # ---------------------------------------------------------
-
-    event_ids = [
-        event.event_id
-        for event in events
-    ]
-
-    linked_event_ids = set()
-
-    if event_ids:
-        linked_rows = (
-            db.query(AlertEvent.event_id)
-            .filter(
-                AlertEvent.event_id.in_(event_ids)
-            )
-            .all()
-        )
-
-        linked_event_ids = {
-            row[0]
-            for row in linked_rows
-        }
-
-    new_event_ids = {
-        event_id
-        for event_id in event_ids
-        if event_id not in linked_event_ids
-    }
-
-    if not new_event_ids:
-        # Nothing new has arrived since the previous detection run.
+    if not unlinked_events:
         correlate_alerts(db)
         return []
 
-    new_events = [
-        event
-        for event in events
-        if event.event_id in new_event_ids
-    ]
+    # Load context window around unlinked events
+    if linked_event_ids:
+        all_events = (
+            db.query(Event)
+            .order_by(Event.timestamp.asc())
+            .all()
+        )
+    else:
+        all_events = list(unlinked_events)
+
+    # Ensure we have enough history for threshold rules
+    if all_events:
+        earliest_unlinked = min(e.timestamp for e in unlinked_events)
+        cutoff = earliest_unlinked - timedelta(seconds=max_window_seconds)
+        # Also include events after cutoff
+        context_events = [e for e in all_events if e.timestamp >= cutoff]
+    else:
+        context_events = list(unlinked_events)
+
+    events = context_events
+    if not events:
+        events = list(all_events)
+
+    event_ids = [event.event_id for event in events]
+
+    new_event_ids = {e.event_id for e in unlinked_events}
+
+    new_events = [event for event in events if event.event_id in new_event_ids]
 
     # ---------------------------------------------------------
     # Evaluate every enabled rule.
     # ---------------------------------------------------------
 
-    for rule in rules:
+    # Ensure SSH-BF-001 is evaluated before SSH-SUCCESS-001
+    rules_sorted = sorted(rules, key=lambda r: (0 if r.get("id") == "SSH-BF-001" else 1 if r.get("id") == "SSH-SUCCESS-001" else 2))
+    for rule in rules_sorted:
 
         threshold = rule.get("threshold")
 

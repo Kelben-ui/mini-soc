@@ -13,5 +13,6 @@ contains:
   - "javascript:"
   - "onerror="
   - "onload="
+  - "alert ("
 
 mitre: T1059

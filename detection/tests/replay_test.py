@@ -1,5 +1,11 @@
 from datetime import datetime, timedelta, timezone
+import os
+import sys
 import uuid
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from backend.app.database import SessionLocal, Base, engine
 from backend.app.models.event import Event
@@ -154,37 +160,41 @@ def main():
         # 4. SQL injection
         # ---------------------------------------------------------
 
-        event = make_event(
-            db,
-            log_type="nginx_access",
-            category="web",
-            action="http_request",
-            details={
-                "method": "GET",
-                "uri": "/vulnerabilities/sqli/?id=1' OR '1'='1",
-            },
-            raw="GET /vulnerabilities/sqli/?id=1' OR '1'='1'",
-        )
+        for i in range(3):
+            event = make_event(
+                db,
+                log_type="nginx_access",
+                category="web",
+                action="http_request",
+                details={
+                    "method": "GET",
+                    "uri": f"/vulnerabilities/sqli/?id=1' OR '1'='1&x={i}",
+                },
+                raw="GET /vulnerabilities/sqli/?id=1' OR '1'='1'",
+                timestamp=now - timedelta(seconds=i),
+            )
 
-        created_event_ids.append(event.event_id)
+            created_event_ids.append(event.event_id)
 
         # ---------------------------------------------------------
         # 5. XSS
         # ---------------------------------------------------------
 
-        event = make_event(
-            db,
-            log_type="nginx_access",
-            category="web",
-            action="http_request",
-            details={
-                "method": "GET",
-                "uri": "/vulnerabilities/xss_r/?name=<script>alert(1)</script>",
-            },
-            raw="GET XSS payload",
-        )
+        for i in range(3):
+            event = make_event(
+                db,
+                log_type="nginx_access",
+                category="web",
+                action="http_request",
+                details={
+                    "method": "GET",
+                    "uri": f"/vulnerabilities/xss_r/?name=<script>alert(1)</script>&x={i}",
+                },
+                raw="GET XSS payload",
+                timestamp=now - timedelta(seconds=i),
+            )
 
-        created_event_ids.append(event.event_id)
+            created_event_ids.append(event.event_id)
 
         # ---------------------------------------------------------
         # 6. Command injection
@@ -200,6 +210,7 @@ def main():
                 "uri": "/vulnerabilities/exec/?ip=127.0.0.1; whoami",
             },
             raw="GET command injection payload",
+            timestamp=now,
         )
 
         created_event_ids.append(event.event_id)
@@ -208,38 +219,42 @@ def main():
         # 7. Directory traversal / LFI
         # ---------------------------------------------------------
 
-        event = make_event(
-            db,
-            log_type="nginx_access",
-            category="web",
-            action="http_request",
-            details={
-                "method": "GET",
-                "uri": "/vulnerabilities/?file=../../etc/passwd",
-            },
-            raw="GET ../../etc/passwd",
-        )
+        for i in range(3):
+            event = make_event(
+                db,
+                log_type="nginx_access",
+                category="web",
+                action="http_request",
+                details={
+                    "method": "GET",
+                    "uri": f"/vulnerabilities/?file=../../etc/passwd&x={i}",
+                },
+                raw="GET ../../etc/passwd",
+                timestamp=now - timedelta(seconds=i),
+            )
 
-        created_event_ids.append(event.event_id)
+            created_event_ids.append(event.event_id)
 
         # ---------------------------------------------------------
         # 8. Scanner user-agent
         # ---------------------------------------------------------
 
-        event = make_event(
-            db,
-            log_type="nginx_access",
-            category="web",
-            action="http_request",
-            details={
-                "method": "GET",
-                "uri": "/",
-                "user_agent": "sqlmap/1.8",
-            },
-            raw="GET / HTTP/1.1 sqlmap",
-        )
+        for i in range(3):
+            event = make_event(
+                db,
+                log_type="nginx_access",
+                category="web",
+                action="http_request",
+                details={
+                    "method": "GET",
+                    "uri": f"/?x={i}",
+                    "user_agent": "sqlmap/1.8",
+                },
+                raw="GET / HTTP/1.1 sqlmap",
+                timestamp=now - timedelta(seconds=i),
+            )
 
-        created_event_ids.append(event.event_id)
+            created_event_ids.append(event.event_id)
 
         # ---------------------------------------------------------
         # 9. HTTP flood
@@ -301,37 +316,41 @@ def main():
         # 12. Unusual outbound connection
         # ---------------------------------------------------------
 
-        event = make_event(
-            db,
-            log_type="firewall",
-            category="network",
-            action="unusual_outbound",
-            dst_port=4444,
-            details={
-                "reason": "destination port not allowlisted",
-            },
-            raw="Firewall unusual outbound connection",
-        )
+        for i in range(3):
+            event = make_event(
+                db,
+                log_type="firewall",
+                category="network",
+                action="unusual_outbound",
+                dst_port=4444,
+                details={
+                    "reason": "destination port not allowlisted",
+                },
+                raw="Firewall unusual outbound connection",
+                timestamp=now - timedelta(seconds=i),
+            )
 
-        created_event_ids.append(event.event_id)
+            created_event_ids.append(event.event_id)
 
         # ---------------------------------------------------------
         # 13. Unusual DNS
         # ---------------------------------------------------------
 
-        event = make_event(
-            db,
-            log_type="dns",
-            category="dns",
-            action="unusual_dns",
-            dst_port=53,
-            details={
-                "query": "very-long-suspicious-subdomain.example.com",
-            },
-            raw="DNS anomaly detected",
-        )
+        for i in range(100):
+            event = make_event(
+                db,
+                log_type="dns",
+                category="dns",
+                action="unusual_dns",
+                dst_port=53,
+                details={
+                    "query": f"very-long-suspicious-subdomain{i}.example.com",
+                },
+                raw="DNS anomaly detected",
+                timestamp=now - timedelta(seconds=i % 60),
+            )
 
-        created_event_ids.append(event.event_id)
+            created_event_ids.append(event.event_id)
 
         db.commit()
 
@@ -402,12 +421,30 @@ def main():
                 "Replay test failed: no alert-event links were created."
             )
 
+        expected = {
+            "WEB-SQLI-001", "WEB-LFI-001", "WEB-CMD-001", "WEB-XSS-001",
+            "DNS-ANOMALY-001", "NET-PORTSCAN-001", "IDS-SIG-001", "SSH-BF-001",
+            "WEB-BF-001", "WEB-SCAN-001", "WEB-FLOOD-001", "SSH-SUCCESS-001",
+            "NET-OUTBOUND-001",
+        }
+        fired = {a.rule_id for a in alerts}
+        missing = sorted(expected - fired)
+        if missing:
+            raise RuntimeError(f"Replay test failed: missing rules {missing}")
+
         print()
         print("REPLAY TEST PASSED")
 
     finally:
 
         # Remove test alert-event links first
+        test_event_ids = set(created_event_ids)
+        if test_event_ids:
+            db.query(AlertEvent).filter(
+                AlertEvent.event_id.in_(test_event_ids)
+            ).delete(
+                synchronize_session=False
+            )
         if created_alert_ids:
             db.query(AlertEvent).filter(
                 AlertEvent.alert_id.in_(created_alert_ids)

@@ -69,14 +69,18 @@ app.include_router(reports_router)
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    "X-XSS-Protection": "0",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=(), usb=(), payment=()",
     "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
 }
 
 API_CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
-    "base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    "base-uri 'none'; frame-ancestors 'none'; form-action 'none'; "
+    "object-src 'none'; script-src 'none'"
 )
 
 _DOCS_PREFIXES = ("/docs", "/redoc", "/openapi.json")
@@ -131,3 +135,31 @@ def get_users(
         }
         for user in users
     ]
+
+
+# --- Rate limiting (security hardening) -------------------------------------
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+except Exception:
+    limiter = None
+
+
+# Request size limit middleware (basic protection)
+@app.middleware("http")
+async def limit_request_size(request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > 25 * 1024 * 1024:  # 25MB limit
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=413, content={"detail": "Request too large"})
+        except ValueError:
+            pass
+    response = await call_next(request)
+    return response

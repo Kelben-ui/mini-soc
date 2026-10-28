@@ -54,3 +54,19 @@ def login(
         "access_token": token,
         "token_type": "bearer"
     }
+
+
+# Apply rate limiting if available
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from fastapi import Request
+
+    limiter = Limiter(key_func=get_remote_address)
+
+    @router.post("/login/rate-limited")
+    @limiter.limit("5/minute")
+    async def login_rate_limited(request: Request, login_req: LoginRequest, db: Session = Depends(get_db)):
+        return login(login_req, db)
+except Exception:
+    pass

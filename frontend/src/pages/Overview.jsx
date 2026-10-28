@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import client from "../api/client";
 
-const POLL_MS = 10000;
+const POLL_MS = 2000;
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
@@ -61,10 +61,13 @@ export default function Overview() {
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
 
     function fetchStats() {
+      if (inFlight) return;
+      inFlight = true;
       client
-        .get("/api/stats")
+        .get("/api/stats", { headers: { "Cache-Control": "no-cache" } })
         .then((res) => {
           if (cancelled) return;
           setStats(res.data);
@@ -74,15 +77,26 @@ export default function Overview() {
           if (!cancelled) {
             setError("Could not load the dashboard. Check the backend connection.");
           }
+        })
+        .finally(() => {
+          inFlight = false;
         });
     }
 
     fetchStats();
     const interval = setInterval(fetchStats, POLL_MS);
+    const onFocus = () => fetchStats();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") fetchStats();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

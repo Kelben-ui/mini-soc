@@ -1,34 +1,28 @@
 # Infrastructure (`infrastructure/`)
 
-Host configuration for the deployed environment. This tree is a **reviewable
-snapshot / reference**, not an installer — the source of truth for provisioning
-is [`../deploy/`](../deploy/) (`install.sh` renders the live files).
+Host configuration snapshots and references for the deployed environment. This
+tree is a **reviewable snapshot / reference**, not an installer — the source of
+truth for provisioning is [`../deploy/`](../deploy/) (`install.sh` renders the
+live files).
 
-## `ec2-soc/`
+## `host-config/` (or local snapshots)
 
-The single EC2 SOC instance (`soc-01`): nftables ruleset, nginx sites, sshd and
-PHP-FPM configuration, the DVWA target's config, log-rotation notes and the AWS
-Security Group export. Each file carries an `Original path:` header showing
-where it lives on the host.
-
-See [`ec2-soc/README.md`](ec2-soc/README.md) for the full file index.
+Host-level configuration snapshots (nftables, nginx, sshd, PHP-FPM, etc.) may be
+stored here for review. Each file should carry an `Original path:` header
+showing where it lives on the host.
 
 ## Relationship to `deploy/`
 
 | Concern | `deploy/` (installer) | `infrastructure/` (snapshot) |
 |---|---|---|
 | Purpose | Provision and update the host | Document what the host runs |
-| `nftables` | `deploy/nftables/mini-soc.conf` (templated) | `infrastructure/ec2-soc/nftables.conf` |
-| nginx | `deploy/nginx/mini-soc.conf` (dashboard on :443) | dashboard site + DVWA site + main `nginx.conf` |
+| `nftables` | `deploy/nftables/mini-soc.conf` (templated) | snapshot files as applicable |
+| nginx | `deploy/nginx/mini-soc.conf` (dashboard on :443) | snapshot files as applicable |
 | services | `deploy/systemd/*.service` | — |
-| sshd / PHP / DVWA | not automated (manual steps in `../docs/lab-setup.md`) | captured here |
-
-The earlier multi-VM layout (`fw-01`, `web-01`, `srv-01`, `atk-01`) was removed
-when the project moved to one EC2 instance; `infrastructure/` now holds only
-`ec2-soc/`.
+| sshd / PHP / DVWA | manual steps in `../docs/lab-setup.md` | captured in snapshots if present |
 
 ## Building the environment from scratch
 
-Follow [`../docs/lab-setup.md`](../docs/lab-setup.md): Security Group, Elastic
-IP, `deploy/install.sh`, then the manual DVWA/MariaDB/PHP-FPM and `sshd` steps.
-The result can be frozen as a clean-baseline AMI for repeatable demos.
+Follow [`../docs/lab-setup.md`](../docs/lab-setup.md): set up the host, run
+`deploy/install.sh`, then apply manual DVWA/MariaDB/PHP-FPM and `sshd` steps as
+documented.

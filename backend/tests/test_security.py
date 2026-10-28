@@ -113,7 +113,9 @@ class TestSQLiXSS:
         user = make_user(db, role="analyst")
         make_incident(db, title="<script>alert('xss')</script>")
 
-        response = get_summary_report(db=db, current_user=user)
+        from fastapi import Response
+
+        response = get_summary_report(response=Response(), db=db, current_user=user)
         body = response.body.decode()
 
         assert "Mini SOC Summary Report" in body

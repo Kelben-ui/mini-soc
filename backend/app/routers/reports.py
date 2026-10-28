@@ -13,7 +13,7 @@ like the incident report.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -54,10 +54,11 @@ def _dict_rows(mapping):
 
 @router.get("/reports/summary")
 def get_summary_report(
+    response: Response,
     db: Session = Depends(get_db),
     current_user=Depends(require_role("analyst", "lead", "admin")),
 ):
-    stats = get_stats(db=db, current_user=current_user)
+    stats = get_stats(response=response, db=db, current_user=current_user)
     generated_at = datetime.now(timezone.utc)
 
     incidents = db.query(Incident).order_by(Incident.created_at.desc()).all()

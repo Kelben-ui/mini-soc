@@ -118,7 +118,7 @@ def get_threshold_events(events, rule):
 
     required_count = threshold["count"]
     window_seconds = threshold["window_seconds"]
-    group_by = threshold.get("group_by", [])
+    group_by = threshold.get("group_by", []) or []
 
     matching_events = [
         event
@@ -133,36 +133,41 @@ def get_threshold_events(events, rule):
         key=lambda event: get_event_value(event, "timestamp")
     )
 
-    latest_event = matching_events[-1]
-
-    latest_time = get_event_value(
-        latest_event,
-        "timestamp"
-    )
-
-    window_start = latest_time - timedelta(
-        seconds=window_seconds
-    )
-
-    window_events = [
-        event
-        for event in matching_events
-        if window_start
-        <= get_event_value(event, "timestamp")
-        <= latest_time
-    ]
-
-    if group_by:
+    if not group_by:
+        latest_event = matching_events[-1]
+        latest_time = get_event_value(latest_event, "timestamp")
+        window_start = latest_time - timedelta(seconds=window_seconds)
         window_events = [
             event
-            for event in window_events
-            if tuple(
-                _get_nested_value(event, field) if '.' in field else get_event_value(event, field)
-                for field in group_by
-            )
-        ]  # threshold over groups present in window (per-group evaluation by caller)
+            for event in matching_events
+            if window_start <= get_event_value(event, "timestamp") <= latest_time
+        ]
+        if len(window_events) >= required_count:
+            return window_events
+        return []
 
-    if len(window_events) >= required_count:
-        return window_events
+    triggered_events = []
+    for group_key, group_events in _group_events(matching_events, group_by).items():
+        group_events_sorted = sorted(group_events, key=lambda event: get_event_value(event, "timestamp"))
+        if not group_events_sorted:
+            continue
+        latest_event = group_events_sorted[-1]
+        latest_time = get_event_value(latest_event, "timestamp")
+        window_start = latest_time - timedelta(seconds=window_seconds)
+        window_events = [
+            event
+            for event in group_events_sorted
+            if window_start <= get_event_value(event, "timestamp") <= latest_time
+        ]
+        if len(window_events) >= required_count:
+            triggered_events.extend(window_events)
+    return triggered_events
 
-    return []
+
+def _group_events(events, group_by):
+    grouped = {}
+    for event in events:
+        key = tuple(_get_nested_value(event, field) if '.' in field else get_event_value(event, field) for field in group_by)
+        if all(v is not None for v in key):
+            grouped.setdefault(key, []).append(event)
+    return grouped

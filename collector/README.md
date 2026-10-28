@@ -51,8 +51,8 @@ instant is wrong by the UTC offset. On `Africa/Lagos` (UTC+1) every
 `nginx_error` event landed an hour in the future; because
 `detection/engine/engine.py` anchors its detection window on the **newest**
 event, those future rows pushed the window past all real traffic and **no
-alerts were produced at all**. The bug is invisible on a UTC host (the lab
-EC2), which is why it survived until the local non-UTC run —
+alerts were produced at all**. The bug is invisible on a UTC host, which is
+why it survived until the local non-UTC run —
 see [`../docs/testing/local-wsl-run.md`](../docs/testing/local-wsl-run.md).
 
 `collector/tests/test_nginx_error_parser.py` pins this down with a

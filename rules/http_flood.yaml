@@ -7,8 +7,7 @@ enabled: true
 match:
   category: web
   action: http_request
-  details:
-    status: 301
+
 threshold:
   count: 301
   window_seconds: 60

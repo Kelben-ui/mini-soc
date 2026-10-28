@@ -6,7 +6,7 @@ exercising ``verify_ingest_api_key`` directly.
 """
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from backend.app.dependencies import verify_ingest_api_key
 from backend.app.models.agent import Agent
@@ -61,7 +61,7 @@ def test_stats_reports_agent_and_ids_health(db):
 
     db.expire_all()
 
-    stats = get_stats(db=db, current_user=None)
+    stats = get_stats(db=db, current_user=None, response=Response())
 
     assert stats["ids_status"] == "active"
     assert stats["agents_online"] == 1

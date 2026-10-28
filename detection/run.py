@@ -95,17 +95,9 @@ def main():
         db = SessionLocal()
         try:
             rules = load_rules(rules_path)
+            alert_ids = run_detection(db, rules)
             latest_ts = _latest_event_timestamp(db)
             latest_iso = _iso(latest_ts)
-            previous_iso = checkpoint.get("last_event_timestamp")
-
-            if latest_iso is not None and latest_iso == previous_iso:
-                # No new events since the last run.
-                time.sleep(poll_seconds)
-                continue
-
-            alert_ids = run_detection(db, rules)
-
             checkpoint = {
                 "last_event_timestamp": latest_iso,
                 "last_run": datetime.now(timezone.utc).isoformat(),

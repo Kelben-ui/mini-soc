@@ -30,7 +30,7 @@ thresholds:
 
   # Outbound connections (task 4.4): destination ports NOT listed here raise
   # an outbound_connection event.
-  outbound_allow: [53, 80, 443, 123]
+  outbound_allow: [53, 80, 443, 123, 67, 68, 546, 547, 5353, 5355, 1900, 3702]
 
 # --- Allow-list (task 4.2) --------------------------------------------------
 # IPs that never raise an alert.  analyst_ips are the analysts' own addresses;

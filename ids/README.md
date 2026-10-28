@@ -1,7 +1,7 @@
 # Mini SOC IDS
 
 Custom lightweight IDS/IPS for the Mini SOC platform. It **replaces Suricata**
-(see `docs/architecture.md` §2). It runs on the single EC2 host as the
+(see `docs/architecture.md` §2). It runs on the single single host as the
 `mini-soc-ids` service (`deploy/systemd/mini-soc-ids.service`) and is
 detection-only: it never changes the firewall itself. Prevention is a separate,
 analyst-confirmed step (`deploy/soc-block`, task 4.7).

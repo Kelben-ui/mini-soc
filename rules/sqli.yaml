@@ -12,8 +12,6 @@ contains:
   - "' or "
   - "\" or "
   - "union select"
-  - "select "
-  - " from "
   - "sleep("
   - "--"
   - "/*"

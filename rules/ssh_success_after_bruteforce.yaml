@@ -1,5 +1,5 @@
 id: SSH-SUCCESS-001
-name: Login success after brute force
+name: Successful SSH login after brute force
 severity: CRITICAL
 category: authentication
 enabled: true

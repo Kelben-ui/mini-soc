@@ -6,4 +6,4 @@ enabled: true
 match:
   category: ids
   action: ids_alert
-mitre: T1059
+mitre: T1046

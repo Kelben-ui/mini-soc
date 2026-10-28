@@ -164,11 +164,11 @@ def seed_events(db):
             outcome="failure",
             details={
                 "method": "POST",
-                "uri": "/login",
+                "uri": "/dvwa/login.php",
                 "status": 401,
                 "user_agent": "Mozilla/5.0",
             },
-            raw="POST /login HTTP/1.1 401",
+            raw="POST /dvwa/login.php HTTP/1.1 401",
             timestamp=ago(220 - i),
         )
 

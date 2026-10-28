@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from backend.app.models.alert import Alert
 from backend.app.models.alert_event import AlertEvent
@@ -192,7 +192,7 @@ def test_stats_includes_overview_extras(db):
     )
     db.commit()
 
-    stats = get_stats(db=db, current_user=user)
+    stats = get_stats(db=db, current_user=user, response=Response())
 
     assert "alerts_over_24h" in stats
     assert len(stats["alerts_over_24h"]) == 24

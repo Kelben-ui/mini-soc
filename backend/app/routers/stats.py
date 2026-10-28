@@ -149,11 +149,17 @@ def _agent_health(db):
     return agents, ids_status
 
 
+from fastapi import Response
+
+
 @router.get("/stats")
 def get_stats(
+    response: Response,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
     total_events = db.query(
         func.count(Event.event_id)
     ).scalar()

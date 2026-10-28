@@ -1,7 +1,7 @@
 # sample-data
 
 Lab log samples used to verify the collector parsers and the pipeline end to
-end (task 1.6). The EC2 box (`ip-172-31-13-199`) is currently unreachable, so
+end (task 1.6). The lab host (`ip-172-31-13-199`) is currently unreachable, so
 these lines are **hand-built to be byte-format-identical** to the real
 sources listed below. When the box is recovered, replace them with captured
 lines from the host (they must parse with `collector/parsers/*` and trigger
@@ -22,7 +22,7 @@ Regenerate: `python sample-data/generate.py`
 The files include the full volumes the threshold rules need (see
 `rules/*.yaml`):
 
-- WEB-BF-001: 20× `POST /login` `401` from one src (threshold 20 / 120 s)
+- WEB-BF-001: 20× `POST /dvwa/login.php` `401` from one src (threshold 20 / 120 s)
 - WEB-FLOOD-001: 301× status-`301` GET from one src (threshold 301 / 60 s)
 - SSH-BF-001: 12× `Failed password` from one src (threshold 10 / 300 s)
 - SSH-SUCCESS-001: one `Accepted` line right after the burst

@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from fastapi import Response
+
 from backend.app.models.alert import Alert
 from backend.app.models.incident import Incident
 from backend.app.models.user import User
@@ -102,7 +104,7 @@ def test_threat_level_reflects_active_critical(db):
     user = make_user(db)
     make_alert(db, severity="CRITICAL", status="NEW")
 
-    stats = get_stats(db=db, current_user=user)
+    stats = get_stats(db=db, current_user=user, response=Response())
 
     assert stats["threat_level"] == "CRITICAL"
     assert stats["active_alerts"] >= 1
@@ -113,7 +115,7 @@ def test_resolved_alerts_do_not_raise_threat_level(db):
     user = make_user(db)
     make_alert(db, severity="LOW", status="RESOLVED")
 
-    stats = get_stats(db=db, current_user=user)
+    stats = get_stats(db=db, current_user=user, response=Response())
 
     assert "threat_level" in stats
     assert stats["threat_level"] in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
@@ -134,7 +136,7 @@ def test_stats_exposes_response_time_metrics(db):
     db.add(incident)
     db.commit()
 
-    stats = get_stats(db=db, current_user=user)
+    stats = get_stats(db=db, current_user=user, response=Response())
 
     assert "mean_time_to_detect_seconds" in stats
     assert "mean_time_to_contain_seconds" in stats
